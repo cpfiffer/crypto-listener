@@ -1,5 +1,4 @@
-#[allow(non_snake_case)]
-#[feature(assoc_unix_epoch)]
+#![allow(non_snake_case)]
 
 extern crate serde;
 extern crate serde_json;
@@ -7,13 +6,11 @@ extern crate hyper;
 extern crate websocket;
 extern crate postgres;
 
-use serde_json::Value::{Null};
-use serde_json::{Value, Error};
+use serde_json::{Value};
 use chan::Receiver;
 use chan::Sender;
 use std::thread;
-use std::time;
-use websocket::{Message, OwnedMessage};
+use websocket::{OwnedMessage};
 use websocket::client::ClientBuilder;
 use super::database;
 use self::postgres::Connection;

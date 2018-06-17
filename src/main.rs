@@ -17,6 +17,7 @@ use chan_signal::Signal;
 
 pub mod gemini;
 pub mod database;
+pub mod gdax;
 
 fn main() {
     //Set up channels
@@ -35,13 +36,7 @@ fn main() {
     // Await termination message.
     println!("Catching messages...");
 
-    let mut looping = true;
-
-    while looping {
-        if !looping {
-            println!("Looping is false, breaking?");
-            break
-        }
+    loop {
 
         chan_select!{
             default => (),
@@ -62,7 +57,6 @@ fn main() {
             signal.recv() -> sig => {
                 println!("OS Signal: {:?}", sig);
                 close_threads(&s, threads.len() as u8);
-                looping = false;
                 break
             }
         }
