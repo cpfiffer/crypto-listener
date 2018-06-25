@@ -23,44 +23,47 @@ fn main() {
     //Set up channels
     let (s, r) = chan::sync(0);
 
+    // DEBUG
+
     // Set up OS channel.
-    let signal = chan_signal::notify(&[Signal::INT, Signal::TERM]);
+    // let signal = chan_signal::notify(&[Signal::INT, Signal::TERM]);
 
     // Allocate thread vector.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
     // Spin threads.
     println!("Spinning threads...");
-    threads.append(&mut gemini::start_gemini(s.clone(), r.clone()));
+    // threads.append(&mut gemini::start_gemini(s.clone(), r.clone()));
+    threads.append(&mut gdax::start_gdax(s.clone(), r.clone()));
 
     // Await termination message.
     println!("Catching messages...");
 
-    loop {
-
-        chan_select!{
-            default => (),
-            r.recv() -> receipt => {
-                match receipt {
-                    Some(OwnedMessage::Close(m)) => {
-                        println!("Main thread received close message: {:?}", m);
-                        close_threads(&s, threads.len() as u8 - 1);
-                        break
-                    },
-                    Some(OwnedMessage::Text(m)) => {
-                        println!("Message to IO thread: {:?}", m);
-                    },
-                    None => continue,
-                    _ => println!("Unknown message to main thread: {:?}", receipt)
-                }
-            },
-            signal.recv() -> sig => {
-                println!("OS Signal: {:?}", sig);
-                close_threads(&s, threads.len() as u8);
-                break
-            }
-        }
-    }
+    // loop {
+    //
+    //     chan_select!{
+    //         default => (),
+    //         r.recv() -> receipt => {
+    //             match receipt {
+    //                 Some(OwnedMessage::Close(m)) => {
+    //                     println!("Main thread received close message: {:?}", m);
+    //                     close_threads(&s, threads.len() as u8 - 1);
+    //                     break
+    //                 },
+    //                 Some(OwnedMessage::Text(m)) => {
+    //                     println!("Message to IO thread: {:?}", m);
+    //                 },
+    //                 None => continue,
+    //                 _ => println!("Unknown message to main thread: {:?}", receipt)
+    //             }
+    //         },
+    //         // signal.recv() -> sig => {
+    //         //     println!("OS Signal: {:?}", sig);
+    //         //     close_threads(&s, threads.len() as u8);
+    //         //     break
+    //         // }
+    //     }
+    // }
 
     // Clean up the threads.
     // thread::sleep(time::Duration::new(5, 0));

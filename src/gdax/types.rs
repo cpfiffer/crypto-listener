@@ -1,3 +1,5 @@
+extern crate serde_json;
+
 // // Request
 // // Subscribe to ETH-USD and ETH-EUR with the level2, heartbeat and ticker channels,
 // // plus receive the ticker entries for ETH-BTC and ETH-USD
@@ -20,10 +22,21 @@
 //     ]
 // }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Subscription {
     kind: String,
     product_ids: Vec<String>,
     channels: Vec<String>
+}
+
+impl Subscription {
+    pub fn new(products: Vec<String>) -> Subscription {
+        return Subscription {
+            kind: "subscribe".to_string(),
+            product_ids: products,
+            channels: vec!["full".to_string()],
+        }
+    }
 }
 
 // "type": "received",
@@ -36,16 +49,24 @@ pub struct Subscription {
 // "side": "buy",
 // "order_type": "limit"
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Received {
 kind: String,
 time: String,
 product_id: String,
-sequence: u32,
+sequence: u64,
 order_id: String,
 size: String,
 price: String,
 side: String,
-order_type: String
+order_kind: String
+}
+
+impl Received {
+    pub fn new(message: &String) -> Result<Received, serde_json::Error> {
+        let Received: Received = serde_json::from_str(&message)?;
+        return Result::Ok(Received);
+    }
 }
 
 //   "type": "open",
@@ -57,15 +78,23 @@ order_type: String
 //   "remaining_size": "1.00",
 //   "side": "sell"
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Open {
 kind: String,
 time: String,
 product_id: String,
-sequence: u32,
+sequence: u64,
 order_id: String,
 price: String,
 remaining_size: String,
 side: String
+}
+
+impl Open {
+    pub fn new(message: &String) -> Result<Open, serde_json::Error> {
+        let Open: Open = serde_json::from_str(&message)?;
+        return Result::Ok(Open);
+    }
 }
 
 //   "type": "done",
@@ -78,16 +107,24 @@ side: String
 //   "side": "sell",
 //   "remaining_size": "0"
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Done {
 kind: String,
 time: String,
 product_id: String,
-sequence: u32,
+sequence: u64,
 price: String,
 order_id: String,
 reason: String,
 side: String,
 remaining_size: String
+}
+
+impl Done {
+    pub fn new(message: &String) -> Result<Done, serde_json::Error> {
+        let Done: Done = serde_json::from_str(&message)?;
+        return Result::Ok(Done);
+    }
 }
 
 //   "type": "match",
@@ -101,10 +138,11 @@ remaining_size: String
 //   "price": "400.23",
 //   "side": "sell"
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Match {
 kind: String,
 trade_id: u32,
-sequence: u32,
+sequence: u64,
 maker_order_id: String,
 taker_order_id: String,
 time: String,
@@ -112,6 +150,13 @@ product_id: String,
 size: String,
 price: String,
 side: String
+}
+
+impl Match {
+    pub fn new(message: &String) -> Result<Match, serde_json::Error> {
+        let Match: Match = serde_json::from_str(&message)?;
+        return Result::Ok(Match);
+    }
 }
 
 //   "type": "change",
@@ -124,16 +169,24 @@ side: String
 //   "price": "400.23",
 //   "side": "sell"
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Change {
 kind: String,
 time: String,
-sequence: u32,
+sequence: u64,
 order_id: String,
 product_id: String,
 new_size: String,
 old_size: String,
 price: String,
 side: String
+}
+
+impl Change {
+    pub fn new(message: &String) -> Result<Change, serde_json::Error> {
+        let change: Change = serde_json::from_str(&message)?;
+        return Result::Ok(change);
+    }
 }
 
 // "type": "activate",
@@ -150,6 +203,7 @@ side: String
 // "taker_fee_rate": "0.0025",
 // "private": true
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Activate {
 kind: String,
 product_id: String,
@@ -157,13 +211,20 @@ timestamp: String,
 user_id: String,
 profile_id: String,
 order_id: String,
-stop_type: String,
+stop_kind: String,
 side: String,
 stop_price: String,
 size: String,
 funds: String,
 taker_fee_rate: String,
 private: String
+}
+
+impl Activate {
+    pub fn new(message: &String) -> Result<Activate, serde_json::Error> {
+        let activate: Activate = serde_json::from_str(&message)?;
+        return Result::Ok(activate);
+    }
 }
 
 // // Heartbeat message
@@ -175,10 +236,18 @@ private: String
 //     "time": "2014-11-07T08:19:28.464459Z"
 // }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Heartbeat {
     kind: String,
-    sequence: u32,
+    sequence: u64,
     last_trade_id: u32,
     product_id: String,
     time: String
+}
+
+impl Heartbeat {
+    pub fn new(message: &String) -> Result<Heartbeat, serde_json::Error> {
+        let Heartbeat: Heartbeat = serde_json::from_str(&message)?;
+        return Result::Ok(Heartbeat);
+    }
 }
