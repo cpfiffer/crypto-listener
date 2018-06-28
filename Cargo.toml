@@ -5,12 +5,13 @@ authors = ["Cameron Pfiffer <cpfiffer@gmail.com>"]
 
 [dependencies]
 websocket = "0.20.2"
-serde_json = {path = "/home/cameron/code/rust/limit-book/json" }# serde_json = "1.0"
+# serde_json = {path = "/home/cameron/code/rust/limit-book/json" }# serde_json = "1.0"
+serde_json = "1.0"
 serde = "1.0.59"
 serde_derive = "1.0"
 stopwatch = "0.0.7"
 hyper = "0.10"
-postgres = "0.15"
+postgres = {version = "0.15", features = ["with-serde_json"]}
 lazy_static = "1.0"
 regex = "1.0.0"
 chan-signal = "0.3.1"

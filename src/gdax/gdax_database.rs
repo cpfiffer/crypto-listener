@@ -1,6 +1,7 @@
 extern crate postgres;
 extern crate serde_json;
 
+use serde_json::Value;
 use std::io;
 use self::postgres::{Connection, TlsMode};
 
@@ -21,10 +22,8 @@ pub fn connect() -> Connection {
 
 pub fn inject(conn: &Connection,
     val: String) -> Result<(), io::Error> {
-
-    let prep = conn.prepare("INSERT INTO (messages) VALUES ($1)")?;
-
-    prep.execute(&[&val])?;
-
+    let val2: Value = serde_json::from_str(&val).unwrap();
+    let prep = conn.prepare("INSERT INTO messages (message) VALUES ($1)")?;
+    prep.execute(&[&val2])?;
     return Ok(());
 }

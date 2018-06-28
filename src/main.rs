@@ -15,8 +15,8 @@ use websocket::{OwnedMessage};
 use chan_signal::Signal;
 // use stopwatch::{Stopwatch};
 
-pub mod gemini;
-pub mod database;
+// pub mod gemini;
+// pub mod database;
 pub mod gdax;
 
 fn main() {

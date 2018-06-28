@@ -17,7 +17,7 @@ use std::thread;
 use std::time;
 use websocket::{Message, OwnedMessage};
 use websocket::client::ClientBuilder;
-use super::database;
+// use super::database;
 use self::postgres::Connection;
 use hyper::header::{Headers, UserAgent};
 use hyper::Client;
@@ -50,6 +50,8 @@ pub fn spin_thread(
     //
     let db_client = gdax_database::connect();
 
+    // let json_test = r#"{"type":"open","side":"buy","price":"590.24000000","order_id":"d084ddf9-5ff2-4f4b-8228-6d82eb891eb9","remaining_size":"0.08000000","product_id":"BCH-EUR","sequence":485366891,"time":"2018-06-27T04:02:25.011000Z"}"#;
+
     let client = make_client();
     let listen_thread = thread::spawn(move || {
         let products = get_products(&client);
@@ -57,6 +59,7 @@ pub fn spin_thread(
         if products.len() > 0 {
             let mut ws_client = ws_connect();
             subscribe(&mut ws_client, products);
+
             for message in ws_client.incoming_messages() {
                 if let Ok(OwnedMessage::Text(x)) = message {
                     handle_message(x, &db_client);
@@ -75,7 +78,7 @@ fn handle_message(message: String, db_client: &Connection) {
     match inject(db_client, message) {
         Ok(_) => (),
         Err(e) => {
-            println!("\nMessage handling error: {:?}", e);
+            println!("nMessage handling error: {:?}", e);
         }
     }
     // let message = message.replace("type", "kind");
@@ -87,7 +90,7 @@ fn handle_message(message: String, db_client: &Connection) {
     //     _ => ""
     // };
     //
-    // println!("\nMessage: {:?}", &message);
+    // println!("nMessage: {:?}", &message);
     //
     // match message_type {
     //     "subscribe" => println!("{:?}", &message_type),
@@ -100,7 +103,7 @@ fn handle_message(message: String, db_client: &Connection) {
     //     "activate" => println!("{:?}",Activate::new(&message)),
     //     _ => println!("No message type: {}", &message_type),
     // }
-    // println!("\n");
+    // println!("n");
 }
 
 fn ws_connect() -> websocket::sync::Client<Box<NetworkStream + Send>> {
@@ -119,7 +122,7 @@ fn ws_connect() -> websocket::sync::Client<Box<NetworkStream + Send>> {
 fn subscribe(client: &mut websocket::sync::Client<Box<NetworkStream + Send>>, products: Vec<String>) {
     let subscription = Subscription::new(products);
     let sub_json = serde_json::to_string_pretty(&subscription).unwrap().replace("kind", "type");
-    println!("\n{}\n", sub_json);
+    println!("n{}n", sub_json);
     client.send_message(&Message::text(sub_json));
 }
 
@@ -155,7 +158,7 @@ fn get_products(client: &hyper::Client) -> Vec<String> {
             Value::String(x) => retval.push(x.clone()),
             _ => ()
         }
-        // println!("{:?}\n\n", j);
+        // println!("{:?}nn", j);
     }
 
     return retval;
