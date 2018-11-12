@@ -1,56 +1,47 @@
+extern crate hyper;
+extern crate hyper_native_tls;
+extern crate postgres;
 #[allow(non_snake_case)]
 // #[feature(assoc_unix_epoch)]
-
 extern crate serde;
 extern crate serde_json;
-extern crate hyper;
 extern crate websocket;
-extern crate postgres;
-extern crate hyper_native_tls;
 
-use websocket::sync::stream::NetworkStream;
-use serde_json::Value::{Null};
-use serde_json::{Value, Error};
+use self::hyper_native_tls::NativeTlsClient;
+use self::postgres::Connection;
+use super::ThreadMessages;
 use chan::Receiver;
 use chan::Sender;
-use std::thread;
-use std::time;
-use websocket::{Message, OwnedMessage};
-use websocket::client::ClientBuilder;
-// use super::database;
-use self::postgres::Connection;
 use hyper::header::{Headers, UserAgent};
-use hyper::Client;
 use hyper::net::HttpsConnector;
-use self::hyper_native_tls::NativeTlsClient;
-use std::time::{SystemTime, UNIX_EPOCH};
+use hyper::Client;
+use serde_json::Value;
 use std::io::Read;
+use std::thread;
+use websocket::client::ClientBuilder;
+use websocket::sync::stream::NetworkStream;
+use websocket::{Message, OwnedMessage};
 
-pub mod types;
 pub mod gdax_database;
+pub mod types;
 
-use self::types::*;
 use self::gdax_database::*;
+use self::types::*;
 
 const CONNECTION: &'static str = "wss://ws-feed.gdax.com";
 
-pub fn start_gdax(s: Sender<websocket::OwnedMessage>,
-                   r: Receiver<websocket::OwnedMessage>) -> Vec<thread::JoinHandle<()>> {
+pub fn start_gdax(rvx: mut bus::BusReader<ThreadMessages>) -> Vec<thread::JoinHandle<()>> {
     // let connection_targets:
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
-    threads.push(spin_thread(s.clone(), r.clone()));
+    threads.push(spin_thread(rvx));
 
     return threads;
 }
 
-pub fn spin_thread(
-                   s: Sender<websocket::OwnedMessage>,
-                   r: Receiver<websocket::OwnedMessage>) -> thread::JoinHandle<()> {
+pub fn spin_thread(rvx: bus::BusReader<ThreadMessages>) -> thread::JoinHandle<()> {
     //
     let db_client = gdax_database::connect();
-
-    // let json_test = r#"{"type":"open","side":"buy","price":"590.24000000","order_id":"d084ddf9-5ff2-4f4b-8228-6d82eb891eb9","remaining_size":"0.08000000","product_id":"BCH-EUR","sequence":485366891,"time":"2018-06-27T04:02:25.011000Z"}"#;
 
     let client = make_client();
     let listen_thread = thread::spawn(move || {
@@ -65,7 +56,16 @@ pub fn spin_thread(
                     handle_message(x, &db_client);
                 } else {
                     println!("Error incoming_messages: {:?}", message);
+                    return;
                 };
+
+                match rvx.try_recv() {
+                    Ok(ThreadMessages::Close) => {
+                        return;
+                    }
+                    Ok(ThreadMessages::Greetings) => {}
+                    Err(..) => {}
+                }
             }
         }
         ()
@@ -119,11 +119,17 @@ fn ws_connect() -> websocket::sync::Client<Box<NetworkStream + Send>> {
     return client;
 }
 
-fn subscribe(client: &mut websocket::sync::Client<Box<NetworkStream + Send>>, products: Vec<String>) {
+fn subscribe(
+    client: &mut websocket::sync::Client<Box<NetworkStream + Send>>,
+    products: Vec<String>,
+) {
     let subscription = Subscription::new(products);
-    let sub_json = serde_json::to_string_pretty(&subscription).unwrap().replace("kind", "type");
-    println!("n{}n", sub_json);
-    client.send_message(&Message::text(sub_json));
+    let sub_json = serde_json::to_string_pretty(&subscription)
+        .unwrap()
+        .replace("kind", "type");
+    println!("\n{}\n", sub_json);
+    let m = client.send_message(&Message::text(sub_json));
+    println!("{:?}", m);
 }
 
 fn make_client() -> hyper::Client {
@@ -138,7 +144,11 @@ fn get_products(client: &hyper::Client) -> Vec<String> {
     let mut headers = Headers::new();
     headers.set(UserAgent("hyper/0.5.2".to_owned()));
 
-    let mut resp = client.get("https://api.gdax.com/products").headers(headers).send().unwrap();
+    let mut resp = client
+        .get("https://api.gdax.com/products")
+        .headers(headers)
+        .send()
+        .unwrap();
     let mut body = vec![];
     resp.read_to_end(&mut body).unwrap();
     let resp = String::from_utf8_lossy(&body);
@@ -156,7 +166,7 @@ fn get_products(client: &hyper::Client) -> Vec<String> {
     for j in json {
         match &j["id"] {
             Value::String(x) => retval.push(x.clone()),
-            _ => ()
+            _ => (),
         }
         // println!("{:?}nn", j);
     }

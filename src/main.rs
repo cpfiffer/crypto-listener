@@ -1,32 +1,35 @@
-extern crate serde_json;
-
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
+
+extern crate bus;
 extern crate chan;
 extern crate chan_signal;
-
-extern crate websocket;
-extern crate stopwatch;
 extern crate hyper;
+extern crate serde_json;
+extern crate stopwatch;
+extern crate websocket;
 
+use bus::Bus;
 use std::thread;
-use websocket::{OwnedMessage};
-use chan_signal::Signal;
+use websocket::OwnedMessage;
 // use stopwatch::{Stopwatch};
 
 // pub mod gemini;
 // pub mod database;
 pub mod gdax;
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum ThreadMessages {
+    Close,
+    Greetings,
+}
+
 fn main() {
     //Set up channels
-    let (s, r) = chan::sync(0);
-
-    // DEBUG
-
-    // Set up OS channel.
-    // let signal = chan_signal::notify(&[Signal::INT, Signal::TERM]);
+    let mut bus = Bus::new(10);
+    let mut rvx = bus.add_rx();
+    bus.broadcast(ThreadMessages::Greetings);
+    println!("{:?}", rvx.recv());
 
     // Allocate thread vector.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
@@ -34,7 +37,7 @@ fn main() {
     // Spin threads.
     println!("Spinning threads...");
     // threads.append(&mut gemini::start_gemini(s.clone(), r.clone()));
-    threads.append(&mut gdax::start_gdax(s.clone(), r.clone()));
+    // threads.append(&mut gdax::start_gdax(s.clone(), r.clone()));
 
     // Await termination message.
     println!("Catching messages...");
@@ -74,7 +77,7 @@ fn main() {
         println!("Trying to close thread {}", &counter);
         match thread.join() {
             Ok(_) => (),
-            Err(e) => println!("Thread join: {:?}", e)
+            Err(e) => println!("Thread join: {:?}", e),
         }
         counter += 1;
     }
@@ -82,7 +85,7 @@ fn main() {
     println!("All done.");
 }
 
-fn close_threads(s: &chan::Sender<websocket::OwnedMessage>, num_threads: u8){
+fn close_threads(s: &chan::Sender<websocket::OwnedMessage>, num_threads: u8) {
     for n in 0..num_threads {
         println!("Sending close message {}", n);
         // chan_select!{
