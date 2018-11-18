@@ -1,10 +1,12 @@
 extern crate postgres;
 extern crate serde_json;
 
-use std::io;
 use self::postgres::{Connection, TlsMode};
+use std::io;
 
-use super::gemini::{Update, Change, Trade};
+use super::gemini::{Change, Trade, Update};
+
+pub mod influx;
 
 const TRADE_INJECT: &'static str = "
     INSERT INTO trades (
@@ -35,9 +37,11 @@ const CHANGE_INJECT: &'static str = "
         )";
 
 pub fn connect() -> Connection {
-    let conn = Connection::connect("postgres://rust:fuck@localhost:5432/gemini", TlsMode::None).unwrap();
+    let conn =
+        Connection::connect("postgres://rust:fuck@localhost:5432/gemini", TlsMode::None).unwrap();
 
-    match conn.execute("CREATE TABLE IF NOT EXISTS trades (
+    match conn.execute(
+        "CREATE TABLE IF NOT EXISTS trades (
                 timestampms    bigint,
                 socket_sequence oid,
                 eventId oid,
@@ -46,12 +50,15 @@ pub fn connect() -> Connection {
                 amount text,
                 makerSide text,
                 pair text
-            )", &[]) {
-                Ok(_) => (),
-                Err(e) => println!("Trade table creation error: {:?}", e)
-            }
+            )",
+        &[],
+    ) {
+        Ok(_) => (),
+        Err(e) => println!("Trade table creation error: {:?}", e),
+    }
 
-   match conn.execute("CREATE TABLE IF NOT EXISTS changes (
+    match conn.execute(
+        "CREATE TABLE IF NOT EXISTS changes (
               timestampms    bigint,
               socket_sequence oid,
               eventId oid,
@@ -61,20 +68,23 @@ pub fn connect() -> Connection {
               remaining text,
               side text,
               pair text
-          )", &[]) {
-              Ok(_) => (),
-              Err(e) => print!("Change table creation injection error: {:?}", e)
-          }
+          )",
+        &[],
+    ) {
+        Ok(_) => (),
+        Err(e) => print!("Change table creation injection error: {:?}", e),
+    }
 
     return conn;
 }
 
-pub fn inject_gemini(conn: &Connection,
+pub fn inject_gemini(
+    conn: &Connection,
     val: Update,
     trades: Vec<Trade>,
     changes: Vec<Change>,
-    pair: &'static str) -> Result<(), io::Error> {
-
+    pair: &'static str,
+) -> Result<(), io::Error> {
     // Inject trades.
     let prep = conn.prepare(TRADE_INJECT)?;
     for t in trades {
@@ -86,10 +96,11 @@ pub fn inject_gemini(conn: &Connection,
             &t.price,
             &t.amount,
             &t.makerSide,
-            &pair]) {
-                Ok(_) => (),
-                Err(e) => println!("Trade injection error: {:?}", e)
-            };
+            &pair,
+        ]) {
+            Ok(_) => (),
+            Err(e) => println!("Trade injection error: {:?}", e),
+        };
     }
 
     // Inject changes.
@@ -104,10 +115,11 @@ pub fn inject_gemini(conn: &Connection,
             &c.delta,
             &c.remaining,
             &c.side,
-            &pair]) {
-                Ok(_) => (),
-                Err(e) => print!("Change injection error: {:?}", e)
-            };
+            &pair,
+        ]) {
+            Ok(_) => (),
+            Err(e) => print!("Change injection error: {:?}", e),
+        };
     }
 
     return Ok(());

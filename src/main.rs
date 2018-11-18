@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate serde_derive;
 
+#[macro_use]
+extern crate influx_db_client;
+
 extern crate bus;
 extern crate chan;
 extern crate chan_signal;
@@ -11,12 +14,10 @@ extern crate websocket;
 
 use bus::Bus;
 use std::thread;
-use websocket::OwnedMessage;
-// use stopwatch::{Stopwatch};
 
 // pub mod gemini;
-// pub mod database;
 pub mod gdax;
+pub mod influx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ThreadMessages {
@@ -27,9 +28,7 @@ pub enum ThreadMessages {
 fn main() {
     //Set up channels
     let mut bus = Bus::new(10);
-    let mut rvx = bus.add_rx();
     bus.broadcast(ThreadMessages::Greetings);
-    println!("{:?}", rvx.recv());
 
     // Allocate thread vector.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
@@ -37,8 +36,7 @@ fn main() {
     // Spin threads.
     println!("Spinning threads...");
     // threads.append(&mut gemini::start_gemini(s.clone(), r.clone()));
-    // threads.append(&mut gdax::start_gdax(s.clone(), r.clone()));
-
+    threads.append(&mut gdax::start_gdax(bus.add_rx()));
     // Await termination message.
     println!("Catching messages...");
 
@@ -71,6 +69,8 @@ fn main() {
     // Clean up the threads.
     // thread::sleep(time::Duration::new(5, 0));
     println!("Waiting for threads to close...");
+    // thread::sleep_ms(10000);
+    // bus.broadcast(ThreadMessages::Close);
 
     let mut counter = 0;
     for thread in threads {
@@ -83,16 +83,4 @@ fn main() {
     }
 
     println!("All done.");
-}
-
-fn close_threads(s: &chan::Sender<websocket::OwnedMessage>, num_threads: u8) {
-    for n in 0..num_threads {
-        println!("Sending close message {}", n);
-        // chan_select!{
-        //     default => println!("Message sending failed on {}", n),
-        //     s.send(OwnedMessage::Close(None)) => ()
-        // }
-        s.send(OwnedMessage::Close(None));
-    }
-    println!("Done sending close messages");
 }
