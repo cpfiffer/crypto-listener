@@ -5,14 +5,15 @@ extern crate serde_derive;
 extern crate influx_db_client;
 
 extern crate bus;
-extern crate chan;
-extern crate chan_signal;
+extern crate ctrlc;
 extern crate hyper;
 extern crate serde_json;
 extern crate stopwatch;
 extern crate websocket;
 
 use bus::Bus;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 
 // pub mod gemini;
@@ -26,6 +27,10 @@ pub enum ThreadMessages {
 }
 
 fn main() {
+    // Variables to handle CTRL + C
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
     //Set up channels
     let mut bus = Bus::new(10);
     bus.broadcast(ThreadMessages::Greetings);
@@ -40,37 +45,22 @@ fn main() {
     // Await termination message.
     println!("Catching messages...");
 
-    // loop {
-    //
-    //     chan_select!{
-    //         default => (),
-    //         r.recv() -> receipt => {
-    //             match receipt {
-    //                 Some(OwnedMessage::Close(m)) => {
-    //                     println!("Main thread received close message: {:?}", m);
-    //                     close_threads(&s, threads.len() as u8 - 1);
-    //                     break
-    //                 },
-    //                 Some(OwnedMessage::Text(m)) => {
-    //                     println!("Message to IO thread: {:?}", m);
-    //                 },
-    //                 None => continue,
-    //                 _ => println!("Unknown message to main thread: {:?}", receipt)
-    //             }
-    //         },
-    //         // signal.recv() -> sig => {
-    //         //     println!("OS Signal: {:?}", sig);
-    //         //     close_threads(&s, threads.len() as u8);
-    //         //     break
-    //         // }
-    //     }
-    // }
+    // Set termination signal.
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    println!("Awaiting termination signal...");
+
+    // Awaiting termination signal.
+    while running.load(Ordering::SeqCst) {}
+
+    // Broadcast termination signal.
+    bus.broadcast(ThreadMessages::Close);
 
     // Clean up the threads.
-    // thread::sleep(time::Duration::new(5, 0));
     println!("Waiting for threads to close...");
-    // thread::sleep_ms(10000);
-    // bus.broadcast(ThreadMessages::Close);
 
     let mut counter = 0;
     for thread in threads {
