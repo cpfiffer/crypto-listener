@@ -5,7 +5,7 @@ use std::collections::HashMap;
 const SEPARATE_FIELDS: bool = true;
 
 pub fn inject_influx(message: String, exchange: &'static str) {
-  let client = Client::new("http://127.0.0.1:8086", exchange).set_authentication("root", "root");
+  let client = Client::new("http://127.0.0.1:8086", "cryptocon").set_authentication("root", "root");
 
   let mut point = point!(&exchange);
 

@@ -52,7 +52,7 @@ pub fn spin_thread(mut rvx: bus::BusReader<ThreadMessages>) -> thread::JoinHandl
                     handle_message_influx(x, THIS_EXCHANGE);
                 } else {
                     println!("Error gdax incoming_messages: {:?}", message);
-                    // break;
+                    break;
                 };
 
                 match rvx.try_recv() {
