@@ -8,13 +8,14 @@ extern crate serde_json;
 extern crate websocket;
 
 use self::hyper_native_tls::NativeTlsClient;
-use super::ThreadMessages;
+use super::threadpack::*;
 use hyper::header::{Headers, UserAgent};
 use hyper::net::HttpsConnector;
 use hyper::Client;
 use influx;
 use serde_json::Value;
 use std::io::Read;
+use std::sync::mpsc::Receiver;
 use std::thread;
 use websocket::client::ClientBuilder;
 use websocket::sync::stream::NetworkStream;
@@ -28,113 +29,79 @@ use self::types::*;
 const CONNECTION: &'static str = "wss://ws-feed.gdax.com";
 const THIS_EXCHANGE: &'static str = "gdax";
 
-pub fn start_gdax(rvx: bus::BusReader<ThreadMessages>) -> Vec<thread::JoinHandle<()>> {
-    // let connection_targets:
+pub fn start_gdax(
+    rvx: bus::BusReader<ThreadMessages>,
+    live: bool,
+) -> (Vec<thread::JoinHandle<()>>, Vec<Receiver<ThreadMessages>>) {
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
+    let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
 
-    threads.push(spin_thread(rvx));
+    let (handle, receiver) = spin_thread(rvx, live);
+    threads.push(handle);
+    receivers.push(receiver);
 
-    return threads;
+    return (threads, receivers);
 }
 
-pub fn spin_thread(mut rvx: bus::BusReader<ThreadMessages>) -> thread::JoinHandle<()> {
+pub fn spin_thread(
+    rvx: bus::BusReader<ThreadMessages>,
+    live: bool,
+) -> (thread::JoinHandle<()>, Receiver<ThreadMessages>) {
     //
     let client = make_client();
+    let (mut tpack, receiver) = ThreadPack::new(rvx);
+
     let listen_thread = thread::spawn(move || {
-        let products = get_products(&client);
+        if live {
+            let products = get_products(&client);
 
-        if products.len() > 0 {
-            let mut ws_client = ws_connect();
-            subscribe(&mut ws_client, products);
+            if products.len() > 0 {
+                let mut ws_client = ws_connect();
+                subscribe(&mut ws_client, products);
 
-            for message in ws_client.incoming_messages() {
-                if let Ok(OwnedMessage::Text(x)) = message {
-                    handle_message_influx(x, THIS_EXCHANGE);
-                } else {
-                    println!("Error gdax incoming_messages: {:?}", message);
-                    break;
-                };
+                for message in ws_client.incoming_messages() {
+                    if let Ok(OwnedMessage::Text(x)) = message {
+                        handle_message_influx(x, THIS_EXCHANGE);
+                    } else {
+                        tpack.message(format!(
+                            "Error in {} receiving messages: {:?}",
+                            THIS_EXCHANGE, message
+                        ));
+                        break;
+                    };
 
-                match rvx.try_recv() {
-                    Ok(y @ ThreadMessages::Close) => {
-                        println!(
-                            "Thread {:?} received message {:?}",
-                            thread::current().id(),
-                            y
-                        );
+                    // Check if we've been told to close.
+                    if tpack.check_close() {
                         break;
                     }
-                    Ok(y @ ThreadMessages::Greetings) => {
-                        println!(
-                            "Thread {:?} received message {:?}",
+                }
+
+                let m_close = ws_client.send_message(&Message::close());
+                match m_close {
+                    Ok(_) => {}
+                    Err(x) => {
+                        let mess = format!(
+                            "Error closing client for thread {:?}, message: {}",
                             thread::current().id(),
-                            y
+                            x
                         );
+
+                        tpack.message(mess.to_string());
                     }
-                    Err(..) => {}
                 }
+                influx::influx_termination(THIS_EXCHANGE);
+                tpack.notify_closed();
             }
-
-            let m_close = ws_client.send_message(&Message::close());
-            match m_close {
-                Ok(_) => {}
-                Err(x) => {
-                    println!(
-                        "Error closing client for thread {:?}, message: {}",
-                        thread::current().id(),
-                        x
-                    );
-                }
-            }
-
-            println!("Thread {:?} closing.", thread::current().id());
+            ()
+        } else {
+            tpack.message("Thread {:?} closing, not live.".to_string());
+            tpack.notify_closed();
+            ()
         }
-        ()
     });
 
-    return listen_thread;
+    return (listen_thread, receiver);
 }
-
-// THIS IS FOR
-// USING A REAL
-// DATABSE
-// pub fn spin_thread(mut rvx: bus::BusReader<ThreadMessages>) -> thread::JoinHandle<()> {
-//     //
-//     let db_client = gdax_database::connect();
-
-//     let client = make_client();
-//     let listen_thread = thread::spawn(move || {
-//         let products = get_products(&client);
-
-//         if products.len() > 0 {
-//             let mut ws_client = ws_connect();
-//             subscribe(&mut ws_client, products);
-
-//             for message in ws_client.incoming_messages() {
-//                 if let Ok(OwnedMessage::Text(x)) = message {
-//                     handle_message(x, &db_client);
-//                 } else {
-//                     println!("Error incoming_messages: {:?}", message);
-//                     return;
-//                 };
-
-//                 match rvx.try_recv() {
-//                     Ok(y) => {
-//                         println!(
-//                             "Thread {:?} received message {:?}",
-//                             thread::current().id(),
-//                             y
-//                         );
-//                     }
-//                     Err(..) => {}
-//                 }
-//             }
-//         }
-//         ()
-//     });
-
-//     return listen_thread;
-// }
 
 fn handle_message_influx(message: String, exchange: &'static str) {
     influx::inject_influx(message, exchange);

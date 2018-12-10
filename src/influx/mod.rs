@@ -2,12 +2,15 @@ use influx_db_client::{Client, Point, Points, Precision, Value};
 use serde_json;
 use std::collections::HashMap;
 
+extern crate serde;
+extern crate serde_derive;
+
 const SEPARATE_FIELDS: bool = true;
 
-pub fn inject_influx(message: String, exchange: &'static str) {
-  let client = Client::new("http://127.0.0.1:8086", "cryptocon").set_authentication("root", "root");
+pub fn inject_influx(message: String, database: &'static str) {
+  let client = Client::new("http://127.0.0.1:8086", database).set_authentication("root", "root");
 
-  let mut point = point!(&exchange);
+  let mut point = point!(&database);
 
   if SEPARATE_FIELDS {
     let message_json: HashMap<String, serde_json::Value> = serde_json::from_str(&message).unwrap();
@@ -37,15 +40,6 @@ pub fn inject_influx(message: String, exchange: &'static str) {
     point.add_field("message", Value::String(message));
   }
 
-  // let point1 = Point::new("test1")
-  //   .add_tag("tags", Value::String(String::from("\\\"fda")))
-  //   .add_tag("number", Value::Integer(12))
-  //   .add_tag("float", Value::Float(12.6))
-  //   .add_field("fd", Value::String("'3'".to_string()))
-  //   .add_field("quto", Value::String("\\\"fda".to_string()))
-  //   .add_field("quto1", Value::String("\"fda".to_string()))
-  //   .to_owned();
-
   let points = points!(point);
 
   // if Precision is None, the default is second
@@ -53,4 +47,29 @@ pub fn inject_influx(message: String, exchange: &'static str) {
   let _ = client
     .write_points(points, Some(Precision::Nanoseconds), None)
     .unwrap();
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InfluxMessage {
+  message_type: String,
+  message: String,
+}
+
+fn create_message(message_type: String, message: String) -> String {
+  let message = serde_json::to_string(&InfluxMessage {
+    message_type,
+    message,
+  })
+  .unwrap();
+
+  return message;
+}
+
+pub fn influx_termination(exchange: &'static str) {
+  influx_message("thread_closure".to_string(), exchange.to_string(), exchange);
+}
+
+pub fn influx_message(message_type: String, message: String, database: &'static str) {
+  let message = create_message(message_type, message);
+  let _ = inject_influx(message, database);
 }
