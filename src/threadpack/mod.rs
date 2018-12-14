@@ -11,16 +11,21 @@ pub enum ThreadMessages {
 pub struct ThreadPack {
   tcv: Sender<ThreadMessages>,
   broadcast_rcv: bus::BusReader<ThreadMessages>,
+  pub exchange: &'static str,
 }
 
 impl ThreadPack {
   // Create a new threadpack. Returns a ThreadPack and a receiver for the
   // Threadpack to send messages back.
-  pub fn new(b_receiver: bus::BusReader<ThreadMessages>) -> (ThreadPack, Receiver<ThreadMessages>) {
+  pub fn new(
+    b_receiver: bus::BusReader<ThreadMessages>,
+    exchange: &'static str,
+  ) -> (ThreadPack, Receiver<ThreadMessages>) {
     let (t, r) = mpsc::channel();
     let pack = ThreadPack {
       tcv: t,
       broadcast_rcv: b_receiver,
+      exchange: exchange,
     };
     return (pack, r);
   }

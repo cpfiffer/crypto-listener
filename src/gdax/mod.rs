@@ -9,10 +9,10 @@ extern crate websocket;
 
 use self::hyper_native_tls::NativeTlsClient;
 use super::threadpack::*;
+use crate::database;
 use hyper::header::{Headers, UserAgent};
 use hyper::net::HttpsConnector;
 use hyper::Client;
-use influx;
 use serde_json::Value;
 use std::io::Read;
 use std::sync::mpsc::Receiver;
@@ -32,11 +32,13 @@ const THIS_EXCHANGE: &'static str = "gdax";
 pub fn start_gdax(
     rvx: bus::BusReader<ThreadMessages>,
     live: bool,
+    password: String,
 ) -> (Vec<thread::JoinHandle<()>>, Vec<Receiver<ThreadMessages>>) {
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
     let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
+    let conn = database::connect(THIS_EXCHANGE, password);
 
-    let (handle, receiver) = spin_thread(rvx, live);
+    let (handle, receiver) = spin_thread(rvx, live, conn);
     threads.push(handle);
     receivers.push(receiver);
 
@@ -46,10 +48,11 @@ pub fn start_gdax(
 pub fn spin_thread(
     rvx: bus::BusReader<ThreadMessages>,
     live: bool,
+    conn: postgres::Connection,
 ) -> (thread::JoinHandle<()>, Receiver<ThreadMessages>) {
     //
     let client = make_client();
-    let (mut tpack, receiver) = ThreadPack::new(rvx);
+    let (mut tpack, receiver) = ThreadPack::new(rvx, THIS_EXCHANGE);
 
     let listen_thread = thread::spawn(move || {
         if live {
@@ -59,38 +62,7 @@ pub fn spin_thread(
                 let mut ws_client = ws_connect();
                 subscribe(&mut ws_client, products);
 
-                for message in ws_client.incoming_messages() {
-                    if let Ok(OwnedMessage::Text(x)) = message {
-                        handle_message_influx(x, THIS_EXCHANGE);
-                    } else {
-                        tpack.message(format!(
-                            "Error in {} receiving messages: {:?}",
-                            THIS_EXCHANGE, message
-                        ));
-                        break;
-                    };
-
-                    // Check if we've been told to close.
-                    if tpack.check_close() {
-                        break;
-                    }
-                }
-
-                let m_close = ws_client.send_message(&Message::close());
-                match m_close {
-                    Ok(_) => {}
-                    Err(x) => {
-                        let mess = format!(
-                            "Error closing client for thread {:?}, message: {}",
-                            thread::current().id(),
-                            x
-                        );
-
-                        tpack.message(mess.to_string());
-                    }
-                }
-                influx::influx_termination(THIS_EXCHANGE);
-                tpack.notify_closed();
+                iterate_client(tpack, ws_client, conn);
             }
             ()
         } else {
@@ -103,18 +75,70 @@ pub fn spin_thread(
     return (listen_thread, receiver);
 }
 
-fn handle_message_influx(message: String, exchange: &'static str) {
-    influx::inject_influx(message, exchange);
-}
+pub fn iterate_client(
+    mut tpack: ThreadPack,
+    mut client: websocket::client::sync::Client<Box<dyn NetworkStream + Send>>,
+    conn: postgres::Connection,
+) {
+    // Check our messages.
+    let mut do_close = false;
+    while !do_close {
+        for m in client.incoming_messages() {
+            match m {
+                Ok(OwnedMessage::Close(_)) => {
+                    do_close = true;
+                    database::inject_log(
+                        &conn,
+                        format!("{} received termination from server.", tpack.exchange),
+                    );
+                }
+                Ok(OwnedMessage::Binary(_)) => {}
+                Ok(OwnedMessage::Ping(_)) => {}
+                Ok(OwnedMessage::Pong(_)) => {}
+                Ok(OwnedMessage::Text(x)) => {
+                    database::inject_json(&conn, x);
+                }
+                Err(x) => {
+                    tpack.message(format!(
+                        "Error in {} receiving messages: {:?}",
+                        tpack.exchange, x
+                    ));
+                    do_close = true;
+                }
+            }
 
-// fn handle_message(message: String, db_client: &Connection) {
-//     match inject(db_client, message) {
-//         Ok(_) => (),
-//         Err(e) => {
-//             println!("nMessage handling error: {:?}", e);
-//         }
-//     }
-// }
+            // Check if we've been told to close.
+            if tpack.check_close() {
+                println!("{} received close message.", tpack.exchange);
+                do_close = true;
+            }
+
+            if do_close {
+                break;
+            }
+        }
+    }
+
+    // Wind the thread down.
+    let m_close = client.send_message(&Message::close());
+    match m_close {
+        Ok(_) => {}
+        Err(x) => {
+            let mess = format!(
+                "Error closing client for thread {:?}, message: {}",
+                thread::current().id(),
+                x
+            );
+
+            tpack.message(mess.to_string());
+        }
+    }
+
+    database::notify_terminate(&conn, THIS_EXCHANGE);
+    tpack.notify_closed();
+
+    ()
+}
 
 fn ws_connect() -> websocket::sync::Client<Box<NetworkStream + Send>> {
     let mut headers = Headers::new();

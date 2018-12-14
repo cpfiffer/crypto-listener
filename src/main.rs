@@ -2,12 +2,11 @@
 extern crate serde_derive;
 #[macro_use]
 extern crate influx_db_client;
-#[macro_use]
-extern crate log;
 
 extern crate bus;
 extern crate ctrlc;
 extern crate hyper;
+extern crate log;
 extern crate pretty_env_logger;
 extern crate serde_json;
 extern crate stopwatch;
@@ -15,12 +14,13 @@ extern crate websocket;
 
 use bus::Bus;
 use std::env;
+use std::io::{stdin, stdout, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::thread;
-use threadpack::*;
 
+pub mod database;
 pub mod gdax;
 pub mod gemini;
 pub mod influx;
@@ -36,26 +36,30 @@ fn main() {
 
     // Variables to handle CTRL + C
     let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
 
     //Set up channels
     let mut bus = Bus::new(0);
-    bus.broadcast(ThreadMessages::Greetings);
+    bus.broadcast(threadpack::ThreadMessages::Greetings);
 
     // Allocate thread vector.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
-    let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
+    let mut receivers: Vec<Receiver<threadpack::ThreadMessages>> = Vec::new();
+
+    // Get password.
+    let password = get_password();
 
     // Spin threads.
     println!("Spinning threads...");
 
     // Start gemini
-    let (mut gemini_threads, mut gemini_receivers) = gemini::start_gemini(&mut bus, live.clone());
+    let (mut gemini_threads, mut gemini_receivers) =
+        gemini::start_gemini(&mut bus, live.clone(), password.clone());
     threads.append(&mut gemini_threads);
     receivers.append(&mut gemini_receivers);
 
     // Start GDAX
-    let (mut gdax_threads, mut gdax_receivers) = gdax::start_gdax(bus.add_rx(), live.clone());
+    let (mut gdax_threads, mut gdax_receivers) =
+        gdax::start_gdax(bus.add_rx(), live.clone(), password.clone());
     threads.append(&mut gdax_threads);
     receivers.append(&mut gdax_receivers);
 
@@ -63,10 +67,10 @@ fn main() {
     println!("Catching messages...");
 
     // Set termination signal.
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
+    // ctrlc::set_handler(move || {
+    //     r.store(false, Ordering::SeqCst);
+    // })
+    // .expect("Error setting Ctrl-C handler");
 
     println!("Awaiting termination signal...");
 
@@ -79,7 +83,7 @@ fn main() {
     }
 
     // Broadcast termination signal.
-    bus.broadcast(ThreadMessages::Close);
+    bus.broadcast(threadpack::ThreadMessages::Close);
 
     // Clean up the threads.
     println!("Waiting for threads...");
@@ -98,7 +102,7 @@ fn main() {
 }
 
 // Returns true if any receiver has an error.
-fn check_receivers(receivers: &Vec<Receiver<ThreadMessages>>) -> bool {
+fn check_receivers(receivers: &Vec<Receiver<threadpack::ThreadMessages>>) -> bool {
     for i in receivers.iter() {
         match i.try_recv() {
             Ok(m) => {
@@ -110,4 +114,21 @@ fn check_receivers(receivers: &Vec<Receiver<ThreadMessages>>) -> bool {
     }
 
     return false;
+}
+
+fn get_password() -> String {
+    let mut s = String::new();
+    print!("Enter PSQL password: ");
+    let _ = stdout().flush();
+    stdin()
+        .read_line(&mut s)
+        .expect("Did not enter a correct string");
+    if let Some('\n') = s.chars().next_back() {
+        s.pop();
+    }
+    if let Some('\r') = s.chars().next_back() {
+        s.pop();
+    }
+    println!("You typed: {}", &s);
+    return s;
 }
