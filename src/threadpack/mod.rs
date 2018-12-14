@@ -46,9 +46,12 @@ impl ThreadPack {
   }
 
   pub fn check_close(&mut self) -> bool {
-    match self.broadcast_rcv.try_recv() {
+    let m = self.broadcast_rcv.try_recv();
+
+    match m {
       Ok(ThreadMessages::Close) => {
         // The main thread told us to close, time to bail!
+        // println!("check_close: {:?}", &m);
         return true;
       }
       Ok(_) => {

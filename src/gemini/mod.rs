@@ -107,9 +107,6 @@ pub fn iterate_clients(
             if tpack.check_close() {
                 println!("{} received close message.", tpack.exchange);
                 do_close = true;
-            }
-
-            if do_close {
                 break;
             }
         }

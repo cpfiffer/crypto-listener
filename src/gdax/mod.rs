@@ -161,9 +161,9 @@ fn subscribe(
     let sub_json = serde_json::to_string_pretty(&subscription)
         .unwrap()
         .replace("kind", "type");
-    println!("\n{}\n", sub_json);
-    let m = client.send_message(&Message::text(sub_json));
-    println!("{:?}", m);
+    // println!("\n{}\n", sub_json);
+    let _ = client.send_message(&Message::text(sub_json));
+    // println!("{:?}", m);
 }
 
 fn make_client() -> hyper::Client {

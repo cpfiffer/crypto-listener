@@ -36,10 +36,10 @@ fn main() {
 
     // Variables to handle CTRL + C
     let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
 
     //Set up channels
-    let mut bus = Bus::new(0);
-    bus.broadcast(threadpack::ThreadMessages::Greetings);
+    let mut bus = Bus::new(10);
 
     // Allocate thread vector.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
@@ -67,10 +67,10 @@ fn main() {
     println!("Catching messages...");
 
     // Set termination signal.
-    // ctrlc::set_handler(move || {
-    //     r.store(false, Ordering::SeqCst);
-    // })
-    // .expect("Error setting Ctrl-C handler");
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     println!("Awaiting termination signal...");
 
@@ -82,20 +82,24 @@ fn main() {
         }
     }
 
+    let mut r2 = bus.add_rx();
+
     // Broadcast termination signal.
     bus.broadcast(threadpack::ThreadMessages::Close);
+
+    println!("Main thread sent: {:?}", r2.try_recv());
 
     // Clean up the threads.
     println!("Waiting for threads...");
 
-    let mut counter = 0;
+    // let mut counter = 0;
     for thread in threads {
-        println!("Trying to close thread {}", &counter);
+        // println!("Trying to close thread {}", &counter);
         match thread.join() {
             Ok(_) => (),
             Err(e) => println!("Thread join: {:?}", e),
         }
-        counter += 1;
+        // counter += 1;
     }
 
     println!("All done.");
@@ -131,4 +135,8 @@ fn get_password() -> String {
     }
     println!("You typed: {}", &s);
     return s;
+}
+
+fn wait(secs: u64) {
+    std::thread::sleep(std::time::Duration::from_secs(secs));
 }
