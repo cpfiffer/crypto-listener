@@ -98,6 +98,7 @@ pub fn iterate_client(
                 Ok(OwnedMessage::Text(x)) => {
                     database::inject_json(&conn, x);
                 }
+                Err(websocket::WebSocketError::NoDataAvailable) => {}
                 Err(x) => {
                     tpack.message(format!(
                         "Error in {} receiving messages: {:?}",
