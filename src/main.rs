@@ -12,6 +12,7 @@ extern crate serde_json;
 extern crate stopwatch;
 extern crate websocket;
 
+use crate::threadpack::ThreadMessages;
 use bus::Bus;
 use std::env;
 use std::io::{stdin, stdout, Write};
@@ -111,9 +112,12 @@ fn main() {
 fn check_receivers(receivers: &Vec<Receiver<threadpack::ThreadMessages>>) -> bool {
     for i in receivers.iter() {
         match i.try_recv() {
-            Ok(m) => {
-                println!("Checking receivers: {:?}", m);
-                return true;
+            Ok(ThreadMessages::Message(m)) => {
+                println!("Checking receivers message: {:?}", m);
+            }
+            Ok(ThreadMessages::Greetings) => {}
+            Ok(ThreadMessages::Close) => {
+                println!("Checking receivers received close.");
             }
             Err(_) => {}
         }
@@ -135,7 +139,6 @@ fn get_password() -> String {
     if let Some('\r') = s.chars().next_back() {
         s.pop();
     }
-    println!("You typed: {}", &s);
     return s;
 }
 
