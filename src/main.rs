@@ -20,6 +20,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::thread;
 
+// pub mod bitfinex;
 pub mod database;
 pub mod errors;
 pub mod gdax;

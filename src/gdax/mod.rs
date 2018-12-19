@@ -59,6 +59,7 @@ pub fn spin_thread(
             let products = get_products(&client);
 
             if products.len() > 0 {
+                tpack.message(format!("{} is beginning it's loop...", THIS_EXCHANGE));
                 loop {
                     let mut ws_client = ws_connect();
                     let conn = database::connect(THIS_EXCHANGE, password.clone());
@@ -131,7 +132,11 @@ pub fn iterate_client(
                 Ok(OwnedMessage::Text(x)) => {
                     database::inject_json(&conn, x);
                 }
-                Err(websocket::WebSocketError::NoDataAvailable) => {}
+                Err(websocket::WebSocketError::NoDataAvailable) => {
+                    tpack.message(format!("{} - No data avilable.", THIS_EXCHANGE));
+                    error_state = CryptoError::Restartable;
+                    do_close = true;
+                }
                 Err(x) => {
                     tpack.message(format!(
                         "Error in {} receiving messages: {:?}",
