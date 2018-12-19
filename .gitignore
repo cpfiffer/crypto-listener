@@ -1,3 +1,4 @@
 target/
 gemini/api.txt
 crypto-ws.code-workspace
+.idea/

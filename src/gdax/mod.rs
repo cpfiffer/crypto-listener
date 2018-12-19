@@ -10,6 +10,7 @@ extern crate websocket;
 use self::hyper_native_tls::NativeTlsClient;
 use super::threadpack::*;
 use crate::database;
+use crate::errors::CryptoError;
 use hyper::header::{Headers, UserAgent};
 use hyper::net::HttpsConnector;
 use hyper::Client;
@@ -36,9 +37,8 @@ pub fn start_gdax(
 ) -> (Vec<thread::JoinHandle<()>>, Vec<Receiver<ThreadMessages>>) {
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
     let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
-    let conn = database::connect(THIS_EXCHANGE, password);
 
-    let (handle, receiver) = spin_thread(rvx, live, conn);
+    let (handle, receiver) = spin_thread(rvx, live, password);
     threads.push(handle);
     receivers.push(receiver);
 
@@ -48,7 +48,7 @@ pub fn start_gdax(
 pub fn spin_thread(
     rvx: bus::BusReader<ThreadMessages>,
     live: bool,
-    conn: postgres::Connection,
+    password: String,
 ) -> (thread::JoinHandle<()>, Receiver<ThreadMessages>) {
     //
     let client = make_client();
@@ -59,10 +59,40 @@ pub fn spin_thread(
             let products = get_products(&client);
 
             if products.len() > 0 {
-                let mut ws_client = ws_connect();
-                subscribe(&mut ws_client, products);
+                loop {
+                    let mut ws_client = ws_connect();
+                    let conn = database::connect(THIS_EXCHANGE, password.clone());
 
-                iterate_client(tpack, ws_client, conn);
+                    subscribe(&mut ws_client, products.clone());
+                    let (t, result) = iterate_client(tpack, ws_client, conn);
+                    tpack = t;
+
+                    match result {
+                        Ok(_) => {
+                            tpack.message(format!(
+                                "{} closed with no error, restarting...",
+                                THIS_EXCHANGE
+                            ));
+                        }
+                        Err(CryptoError::Nothing) => {}
+                        Err(CryptoError::Restartable) => {
+                            tpack.message(format!(
+                                "{} received a restartable error, restarting...",
+                                THIS_EXCHANGE
+                            ));
+                        }
+                        Err(CryptoError::NonRestartable) => {
+                            tpack.message(format!(
+                                "{} received a nonrestartable error, closing...",
+                                THIS_EXCHANGE
+                            ));
+
+                            break;
+                        }
+                    }
+
+                    tpack.message(format!("{} is restarting.", THIS_EXCHANGE));
+                }
             }
             ()
         } else {
@@ -79,7 +109,10 @@ pub fn iterate_client(
     mut tpack: ThreadPack,
     mut client: websocket::client::sync::Client<Box<dyn NetworkStream + Send>>,
     conn: postgres::Connection,
-) {
+) -> (ThreadPack, Result<(), CryptoError>) {
+    // Define error state.
+    let mut error_state = CryptoError::Nothing;
+
     // Check our messages.
     let mut do_close = false;
     while !do_close {
@@ -111,6 +144,7 @@ pub fn iterate_client(
             // Check if we've been told to close.
             if tpack.check_close() {
                 println!("{} received close message.", tpack.exchange);
+                error_state = CryptoError::NonRestartable;
                 do_close = true;
             }
 
@@ -138,7 +172,10 @@ pub fn iterate_client(
     database::notify_terminate(&conn, THIS_EXCHANGE);
     tpack.notify_closed();
 
-    ()
+    match error_state {
+        CryptoError::Nothing => return (tpack, Ok(())),
+        _ => return (tpack, Err(error_state)),
+    }
 }
 
 fn ws_connect() -> websocket::sync::Client<Box<NetworkStream + Send>> {

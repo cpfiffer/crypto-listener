@@ -5,6 +5,7 @@ extern crate serde_json;
 extern crate websocket;
 
 use crate::database;
+use crate::errors::CryptoError;
 use crate::threadpack::*;
 
 use hyper::header::Headers;
@@ -30,40 +31,59 @@ pub fn start_gemini(
     // let connection_targets:
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
     let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
-    let conn = database::connect(THIS_EXCHANGE, password);
 
     let (tpack, receiver) = ThreadPack::new(rvx.add_rx(), THIS_EXCHANGE);
-    threads.push(spin_thread(tpack, live, conn));
+    threads.push(spin_thread(tpack, live, password));
     receivers.push(receiver);
 
     return (threads, receivers);
 }
 
-pub fn spin_thread(
-    tpack: ThreadPack,
-    live: bool,
-    conn: postgres::Connection,
-) -> thread::JoinHandle<()> {
-    // Allocate a client vector.
-    let mut clients: Vec<Client<Box<dyn NetworkStream + Send>>> = Vec::new();
-
-    // Spin up some clients.
-    for pair in PAIRS {
-        let target = [CONNECTION, pair].join("");
-        println!("Connecting to {}...", &target);
-
-        // Wait for messages back.
-        if live {
-            let client = ClientBuilder::new(&target).unwrap().connect(None).unwrap();
-            println!("Successfully connected to {}!", &target);
-            clients.push(client);
-        }
-    }
-
+pub fn spin_thread(mut tpack: ThreadPack, live: bool, password: String) -> thread::JoinHandle<()> {
     // Run through all our clients.
     return thread::spawn(move || {
         if live {
-            iterate_clients(tpack, clients, conn);
+            loop {
+                // Allocate a client vector.
+                let mut clients: Vec<Client<Box<dyn NetworkStream + Send>>> = Vec::new();
+
+                // Connect to the database.
+                let conn = database::connect(THIS_EXCHANGE, password.clone());
+
+                // Spin up some clients.
+                for pair in PAIRS {
+                    let target = [CONNECTION, pair].join("");
+                    println!("Connecting to {}...", &target);
+
+                    // Wait for messages back.
+                    if live {
+                        let client = ClientBuilder::new(&target).unwrap().connect(None).unwrap();
+                        println!("Successfully connected to {}!", &target);
+                        clients.push(client);
+                    }
+                }
+                let (t, result) = iterate_clients(tpack, clients, conn);
+                tpack = t;
+
+                match result {
+                    Ok(_) => {}
+                    Err(CryptoError::Nothing) => {}
+                    Err(CryptoError::Restartable) => {
+                        tpack.message(format!(
+                            "{} received a restartable error, restarting...",
+                            THIS_EXCHANGE
+                        ));
+                    }
+                    Err(CryptoError::NonRestartable) => {
+                        tpack.message(format!(
+                            "{} received a nonrestartable error, closing...",
+                            THIS_EXCHANGE
+                        ));
+
+                        break;
+                    }
+                }
+            }
         }
         return ();
     });
@@ -73,9 +93,13 @@ pub fn iterate_clients(
     mut tpack: ThreadPack,
     mut clients: Vec<Client<Box<dyn NetworkStream + Send>>>,
     conn: postgres::Connection,
-) {
+) -> (ThreadPack, Result<(), CryptoError>) {
     // Check our messages.
     let mut do_close = false;
+
+    // Define error state.
+    let mut error_state = CryptoError::Nothing;
+
     while !do_close {
         for i in clients.iter_mut() {
             let m = i.recv_message();
@@ -87,6 +111,7 @@ pub fn iterate_clients(
                         &conn,
                         format!("{} received termination from server.", tpack.exchange),
                     );
+                    error_state = CryptoError::Restartable;
                 }
                 Ok(OwnedMessage::Binary(_)) => {}
                 Ok(OwnedMessage::Ping(_)) => {}
@@ -100,6 +125,7 @@ pub fn iterate_clients(
                         tpack.exchange, x
                     ));
                     do_close = true;
+                    error_state = CryptoError::Restartable;
                 }
             }
 
@@ -107,6 +133,7 @@ pub fn iterate_clients(
             if tpack.check_close() {
                 println!("{} received close message.", tpack.exchange);
                 do_close = true;
+                error_state = CryptoError::NonRestartable;
                 break;
             }
         }
@@ -131,7 +158,10 @@ pub fn iterate_clients(
         tpack.notify_closed();
     }
 
-    ()
+    match error_state {
+        CryptoError::Nothing => return (tpack, Ok(())),
+        _ => return (tpack, Err(error_state)),
+    }
 }
 
 pub fn gemini_headers() -> Headers {

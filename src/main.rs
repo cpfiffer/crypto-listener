@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::thread;
 
 pub mod database;
+pub mod errors;
 pub mod gdax;
 pub mod gemini;
 pub mod influx;
