@@ -23,7 +23,9 @@ use websocket::sync::stream::NetworkStream;
 use websocket::{Message, OwnedMessage};
 
 const CONNECTION: &'static str = "wss://api.bitfinex.com/ws";
+const PAIRS_URI: &'static str = "https://api.bitfinex.com/v1/symbols";
 const THIS_EXCHANGE: &'static str = "bitfinex";
+const CHANNELS: &'static [&'static str] = &["trades", "book"];
 
 pub fn start_bitfinex(
   rvx: bus::BusReader<ThreadMessages>,
