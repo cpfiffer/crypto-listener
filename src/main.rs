@@ -2,11 +2,12 @@
 extern crate serde_derive;
 #[macro_use]
 extern crate influx_db_client;
+#[macro_use]
+extern crate log;
 
 extern crate bus;
 extern crate ctrlc;
 extern crate hyper;
-extern crate log;
 extern crate pretty_env_logger;
 extern crate serde_json;
 extern crate stopwatch;
@@ -31,7 +32,7 @@ pub mod threadpack;
 
 fn main() {
     // Create logger.
-    pretty_env_logger::init();
+    pretty_env_logger::init_timed();
 
     // Get arguments.
     let args: Vec<String> = env::args().collect();
@@ -52,7 +53,7 @@ fn main() {
     let password = get_password();
 
     // Spin threads.
-    println!("Spinning threads...");
+    info!("Spinning threads...");
 
     // Start gemini
     let (mut gemini_threads, mut gemini_receivers) =
@@ -67,7 +68,7 @@ fn main() {
     receivers.append(&mut gdax_receivers);
 
     // Await termination message.
-    println!("Catching messages...");
+    info!("Catching messages...");
 
     // Set termination signal.
     ctrlc::set_handler(move || {
@@ -75,7 +76,7 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    println!("Awaiting termination signal...");
+    info!("Awaiting termination signal...");
 
     // Awaiting termination signal.
     while running.load(Ordering::SeqCst) {
@@ -90,22 +91,22 @@ fn main() {
     // Broadcast termination signal.
     bus.broadcast(threadpack::ThreadMessages::Close);
 
-    println!("Main thread sent: {:?}", r2.try_recv());
+    info!("Main thread sent: {:?}", r2.try_recv());
 
     // Clean up the threads.
-    println!("Waiting for threads...");
+    info!("Waiting for threads...");
 
     // let mut counter = 0;
     for thread in threads {
         // println!("Trying to close thread {}", &counter);
         match thread.join() {
             Ok(_) => (),
-            Err(e) => println!("Thread join: {:?}", e),
+            Err(e) => info!("Thread join: {:?}", e),
         }
         // counter += 1;
     }
 
-    println!("All done.");
+    info!("All done.");
 }
 
 // Returns true if any receiver has an error.
@@ -113,11 +114,11 @@ fn check_receivers(receivers: &Vec<Receiver<threadpack::ThreadMessages>>) -> boo
     for i in receivers.iter() {
         match i.try_recv() {
             Ok(ThreadMessages::Message(m)) => {
-                println!("Checking receivers message: {:?}", m);
+                info!("Receivers: {:?}", m);
             }
             Ok(ThreadMessages::Greetings) => {}
             Ok(ThreadMessages::Close) => {
-                println!("Checking receivers received close.");
+                info!("Receivers: Received close.");
             }
             Err(_) => {}
         }

@@ -1,0 +1,57 @@
+// ORDER BOOK
+// request
+{
+   "event":"subscribe",
+   "channel":"book",
+   "pair":"<PAIR>",
+   "prec":"R0"
+}
+
+// response
+{
+   "event":"subscribed",
+   "channel":"book",
+   "chanId":"<CHANNEL_ID>",
+   "pair":"<PAIR>",
+   "prec":"R0",
+   "len":"<LENGTH>"
+}
+
+// RAW ORDER BOOK
+// request
+{
+   "event":"subscribe",
+   "channel":"book",
+   "pair":"<PAIR>",
+   "prec":"<PRECISION>",
+   
+   "length":"<LENGTH>""freq":"<FREQUENCY>",
+   "length":"<LENGTH>"
+}
+
+// response
+{
+   "event":"subscribed",
+   "channel":"book",
+   "chanId":"<CHANNEL_ID>",
+   "pair":"<PAIR>",
+   "prec":"<PRECISION>",
+   "freq":"<FREQUENCY>",
+   "len":"<LENGTH>"
+}
+
+// TRADES
+// request
+{
+  "event": "subscribe",
+  "channel": "trades",
+  "pair": "BTCUSD"
+}
+
+// response
+{
+  "event": "subscribed",
+  "channel": "trades",
+  "chanId": "<CHANNEL_ID>",
+  "pair":"<PAIR>"
+}

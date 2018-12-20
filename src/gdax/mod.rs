@@ -148,7 +148,7 @@ pub fn iterate_client(
 
             // Check if we've been told to close.
             if tpack.check_close() {
-                println!("{} received close message.", tpack.exchange);
+                tpack.message(format!("{} received close message.", tpack.exchange));
                 error_state = CryptoError::NonRestartable;
                 do_close = true;
             }

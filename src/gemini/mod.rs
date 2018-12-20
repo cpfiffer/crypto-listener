@@ -53,12 +53,12 @@ pub fn spin_thread(mut tpack: ThreadPack, live: bool, password: String) -> threa
                 // Spin up some clients.
                 for pair in PAIRS {
                     let target = [CONNECTION, pair].join("");
-                    println!("Connecting to {}...", &target);
+                    tpack.message(format!("Connecting to {}...", &target));
 
                     // Wait for messages back.
                     if live {
                         let client = ClientBuilder::new(&target).unwrap().connect(None).unwrap();
-                        println!("Successfully connected to {}!", &target);
+                        tpack.message(format!("Successfully connected to {}!", &target));
                         clients.push(client);
                     }
                 }
