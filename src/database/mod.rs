@@ -3,6 +3,10 @@ extern crate serde_json;
 
 use self::postgres::{Connection, TlsMode};
 
+const LOG_INJECT: &'static str = "INSERT INTO log VALUES (NOW(), $1)";
+const LOG_INJECT_ADDITIONAL: &'static str = "INSERT INTO log VALUES (NOW(), $1, $2)";
+const JSON_INJECT: &'static str = "INSERT INTO raw_json VALUES (NOW(), $1)";
+
 pub fn connect(exchange: &str, password: String) -> Connection {
     let conn = Connection::connect(
         format!("postgres://rust:{}@localhost:5432/{}", password, exchange),
@@ -38,7 +42,7 @@ pub fn connect(exchange: &str, password: String) -> Connection {
 
 pub fn inject_json(conn: &Connection, message: String) {
     let js: serde_json::Value = serde_json::from_str(&message).unwrap();
-    let r = conn.execute("INSERT INTO raw_json VALUES (NOW(), $1)", &[&js]);
+    let r = conn.execute(JSON_INJECT, &[&js]);
 
     match r {
         Ok(_) => {}
@@ -47,7 +51,7 @@ pub fn inject_json(conn: &Connection, message: String) {
 }
 
 pub fn inject_log(conn: &Connection, message: String) {
-    let r = conn.execute("INSERT INTO log VALUES (NOW(), $1)", &[&message]);
+    let r = conn.execute(LOG_INJECT, &[&message]);
 
     match r {
         Ok(_) => {}
@@ -61,7 +65,7 @@ pub fn notify_terminate(conn: &Connection, exchange: &'static str) {
 
 pub fn inject_log_additional(conn: &Connection, message: String, additional: String) {
     let js: serde_json::Value = serde_json::from_str(&additional).unwrap();
-    let r = conn.execute("INSERT INTO log VALUES (NOW(), $1, $2)", &[&message, &js]);
+    let r = conn.execute(LOG_INJECT_ADDITIONAL, &[&message, &js]);
 
     match r {
         Ok(_) => {}
