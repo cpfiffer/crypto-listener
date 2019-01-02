@@ -120,6 +120,10 @@ fn check_receivers(receivers: &Vec<Receiver<threadpack::ThreadMessages>>) -> boo
             Ok(ThreadMessages::Close) => {
                 info!("Receivers: Received close.");
             }
+            Ok(ThreadMessages::Terminate) => {
+                info!("Receivers: Received abort signal, closing down.");
+                return true;
+            }
             Err(_) => {}
         }
     }
@@ -141,8 +145,4 @@ fn get_password() -> String {
         s.pop();
     }
     return s;
-}
-
-fn wait(secs: u64) {
-    std::thread::sleep(std::time::Duration::from_secs(secs));
 }

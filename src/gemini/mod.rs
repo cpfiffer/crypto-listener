@@ -1,4 +1,3 @@
-extern crate hyper;
 extern crate postgres;
 extern crate serde;
 extern crate serde_json;
@@ -8,7 +7,13 @@ use crate::database;
 use crate::errors::CryptoError;
 use crate::threadpack::*;
 
+use hyper;
 use hyper::header::Headers;
+use hyper::header::UserAgent;
+use hyper::net::HttpsConnector;
+use hyper_native_tls::NativeTlsClient;
+use serde_json::Value;
+use std::io::Read;
 use std::sync::mpsc::Receiver;
 use std::thread;
 use websocket::client::sync::Client;
@@ -19,8 +24,6 @@ use websocket::OwnedMessage;
 
 // Connection strings.
 const CONNECTION: &'static str = "wss://api.gemini.com/v1/marketdata/";
-const PAIRS: &'static [&'static str] =
-    &["BTCUSD", "ETHUSD", "ETHBTC", "ZECUSD", "ZECBTC", "ZECETH"];
 const THIS_EXCHANGE: &'static str = "gemini";
 
 pub fn start_gemini(
@@ -32,14 +35,21 @@ pub fn start_gemini(
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
     let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
 
+    let prods = get_products();
+
     let (tpack, receiver) = ThreadPack::new(rvx.add_rx(), THIS_EXCHANGE);
-    threads.push(spin_thread(tpack, live, password));
+    threads.push(spin_thread(tpack, live, password, prods));
     receivers.push(receiver);
 
     return (threads, receivers);
 }
 
-pub fn spin_thread(mut tpack: ThreadPack, live: bool, password: String) -> thread::JoinHandle<()> {
+pub fn spin_thread(
+    mut tpack: ThreadPack,
+    live: bool,
+    password: String,
+    products: Vec<String>,
+) -> thread::JoinHandle<()> {
     // Run through all our clients.
     return thread::spawn(move || {
         if live {
@@ -51,8 +61,9 @@ pub fn spin_thread(mut tpack: ThreadPack, live: bool, password: String) -> threa
                 let conn = database::connect(THIS_EXCHANGE, password.clone());
 
                 // Spin up some clients.
-                for pair in PAIRS {
-                    let target = [CONNECTION, pair].join("");
+                for pair in &products {
+                    // let target = [CONNECTION, pair].join("");
+                    let target = format!("{}{}", CONNECTION, pair);
                     tpack.message(format!("Connecting to {}...", &target));
 
                     // Wait for messages back.
@@ -79,6 +90,7 @@ pub fn spin_thread(mut tpack: ThreadPack, live: bool, password: String) -> threa
                             "{} received a nonrestartable error, closing...",
                             THIS_EXCHANGE
                         ));
+                        tpack.notify_abort();
 
                         break;
                     }
@@ -172,4 +184,42 @@ pub fn gemini_headers() -> Headers {
     headers.append_raw("X-GEMINI-SIGNATURE", b"fuck".to_vec());
 
     return headers;
+}
+
+fn get_products() -> Vec<String> {
+    let ssl = NativeTlsClient::new().unwrap();
+    let connector = HttpsConnector::new(ssl);
+    let client = hyper::Client::with_connector(connector);
+
+    let mut headers = Headers::new();
+    headers.set(UserAgent("hyper/0.5.2".to_owned()));
+
+    let mut resp = client
+        .get("https://api.gdax.com/products")
+        .headers(headers)
+        .send()
+        .unwrap();
+    let mut body = vec![];
+    resp.read_to_end(&mut body).unwrap();
+    let resp = String::from_utf8_lossy(&body);
+    let mut retval = vec![];
+
+    let json: Vec<Value> = match serde_json::from_str(&resp) {
+        Ok(x) => x,
+        Err(e) => {
+            println!("Product connection error: {:?}", e);
+            println!("{:?}", resp);
+            return retval;
+        }
+    };
+
+    for j in json {
+        match &j["id"] {
+            Value::String(x) => retval.push(x.clone()),
+            _ => (),
+        }
+        // println!("{:?}nn", j);
+    }
+
+    return retval;
 }

@@ -40,6 +40,29 @@
    "len":"<LENGTH>"
 }
 
+// snapshot
+[
+   "<CHANNEL_ID>",
+   [
+      [
+         "<ORD_ID>",
+         "<PRICE>",
+         "<AMOUNT>"
+      ],
+      [
+         "..."
+      ]
+   ]
+]
+
+// updates
+[
+   "<CHANNEL_ID>",
+   "<ORD_ID>",
+   "<ORD_PRICE>",
+   "<AMOUNT>"
+]
+
 // TRADES
 // request
 {

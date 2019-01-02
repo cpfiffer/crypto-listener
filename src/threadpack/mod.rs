@@ -4,6 +4,7 @@ use std::sync::mpsc::{Receiver, Sender};
 #[derive(Clone, Debug, PartialEq)]
 pub enum ThreadMessages {
   Close,
+  Terminate,
   Greetings,
   Message(String),
 }
@@ -38,6 +39,11 @@ impl ThreadPack {
   // Notify the main thread that the child is closing.
   pub fn notify_closed(&mut self) {
     let _ = self.tcv.send(ThreadMessages::Close);
+  }
+
+  // Notify the main thread to terminate everything.
+  pub fn notify_abort(&mut self) {
+    let _ = self.tcv.send(ThreadMessages::Terminate);
   }
 
   // Notify the main thread that the child is open.

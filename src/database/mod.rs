@@ -3,6 +3,7 @@ extern crate serde_json;
 
 use self::postgres::{Connection, TlsMode};
 
+// Predefined static SQL queries.
 const LOG_INJECT: &'static str = "INSERT INTO log VALUES (NOW(), $1)";
 const LOG_INJECT_ADDITIONAL: &'static str = "INSERT INTO log VALUES (NOW(), $1, $2)";
 const JSON_INJECT: &'static str = "INSERT INTO raw_json VALUES (NOW(), $1)";

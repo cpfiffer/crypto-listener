@@ -11,7 +11,6 @@ use self::hyper_native_tls::NativeTlsClient;
 use super::threadpack::*;
 use crate::database;
 use crate::errors::CryptoError;
-use hyper::header::{Headers, UserAgent};
 use hyper::net::HttpsConnector;
 use hyper::Client;
 use serde_json::Value;
@@ -19,6 +18,8 @@ use std::io::Read;
 use std::sync::mpsc::Receiver;
 use std::thread;
 use websocket::client::ClientBuilder;
+use websocket::header::Headers;
+use websocket::header::UserAgent;
 use websocket::sync::stream::NetworkStream;
 use websocket::{Message, OwnedMessage};
 
@@ -29,6 +30,7 @@ use self::types::*;
 
 const CONNECTION: &'static str = "wss://ws-feed.gdax.com";
 const THIS_EXCHANGE: &'static str = "gdax";
+const SYMBOL_REQUEST: &'static str = "https://api.gemini.com/v1/symbols";
 
 pub fn start_gdax(
     rvx: bus::BusReader<ThreadMessages>,
@@ -87,6 +89,7 @@ pub fn spin_thread(
                                 "{} received a nonrestartable error, closing...",
                                 THIS_EXCHANGE
                             ));
+                            tpack.notify_abort();
 
                             break;
                         }
@@ -218,14 +221,7 @@ fn make_client() -> hyper::Client {
 }
 
 fn get_products(client: &hyper::Client) -> Vec<String> {
-    let mut headers = Headers::new();
-    headers.set(UserAgent("hyper/0.5.2".to_owned()));
-
-    let mut resp = client
-        .get("https://api.gdax.com/products")
-        .headers(headers)
-        .send()
-        .unwrap();
+    let mut resp = client.get(SYMBOL_REQUEST).send().unwrap();
     let mut body = vec![];
     resp.read_to_end(&mut body).unwrap();
     let resp = String::from_utf8_lossy(&body);
