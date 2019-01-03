@@ -7,14 +7,10 @@ extern crate serde;
 extern crate serde_json;
 extern crate websocket;
 
-use self::hyper_native_tls::NativeTlsClient;
 use super::threadpack::*;
 use crate::database;
 use crate::errors::CryptoError;
-use hyper::net::HttpsConnector;
-use hyper::Client;
-use serde_json::Value;
-use std::io::Read;
+use reqwest;
 use std::sync::mpsc::Receiver;
 use std::thread;
 use websocket::client::ClientBuilder;
@@ -30,7 +26,7 @@ use self::types::*;
 
 const CONNECTION: &'static str = "wss://ws-feed.gdax.com";
 const THIS_EXCHANGE: &'static str = "gdax";
-const SYMBOL_REQUEST: &'static str = "https://api.gemini.com/v1/symbols";
+const SYMBOL_REQUEST: &'static str = "https://api.gdax.com/products";
 
 pub fn start_gdax(
     rvx: bus::BusReader<ThreadMessages>,
@@ -53,12 +49,11 @@ pub fn spin_thread(
     password: String,
 ) -> (thread::JoinHandle<()>, Receiver<ThreadMessages>) {
     //
-    let client = make_client();
     let (mut tpack, receiver) = ThreadPack::new(rvx, THIS_EXCHANGE);
 
     let listen_thread = thread::spawn(move || {
         if live {
-            let products = get_products(&client);
+            let products = get_products();
 
             if products.len() > 0 {
                 tpack.message(format!("{} is beginning it's loop...", THIS_EXCHANGE));
@@ -212,37 +207,40 @@ fn subscribe(
     // println!("{:?}", m);
 }
 
-fn make_client() -> hyper::Client {
-    let ssl = NativeTlsClient::new().unwrap();
-    let connector = HttpsConnector::new(ssl);
-    let client = Client::with_connector(connector);
+fn get_products() -> Vec<String> {
+    let body = reqwest::get(SYMBOL_REQUEST).unwrap().text().unwrap();
+    let body: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    let mut products = vec![];
 
-    return client;
-}
+    for item in body.iter() {
+        let id = match &item["id"] {
+            serde_json::Value::String(x) => x.to_owned(),
+            _ => {
+                info!("Error fetching products on {}, {:?}", THIS_EXCHANGE, &body);
+                String::new()
+            }
+        };
 
-fn get_products(client: &hyper::Client) -> Vec<String> {
-    let mut resp = client.get(SYMBOL_REQUEST).send().unwrap();
-    let mut body = vec![];
-    resp.read_to_end(&mut body).unwrap();
-    let resp = String::from_utf8_lossy(&body);
-    let mut retval = vec![];
-
-    let json: Vec<Value> = match serde_json::from_str(&resp) {
-        Ok(x) => x,
-        Err(e) => {
-            println!("Product connection error: {:?}", e);
-            println!("{:?}", resp);
-            return retval;
-        }
-    };
-
-    for j in json {
-        match &j["id"] {
-            Value::String(x) => retval.push(x.clone()),
-            _ => (),
-        }
-        // println!("{:?}nn", j);
+        products.push(id);
     }
 
-    return retval;
+    return products;
+}
+
+// Define a type so we can return multiple types of errors
+enum FetchError {
+    Http(hyper::Error),
+    Json(serde_json::Error),
+}
+
+impl From<hyper::Error> for FetchError {
+    fn from(err: hyper::Error) -> FetchError {
+        FetchError::Http(err)
+    }
+}
+
+impl From<serde_json::Error> for FetchError {
+    fn from(err: serde_json::Error) -> FetchError {
+        FetchError::Json(err)
+    }
 }

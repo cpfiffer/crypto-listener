@@ -8,10 +8,6 @@ use crate::errors::CryptoError;
 use crate::threadpack::*;
 
 use hyper;
-use hyper::header::Headers;
-use hyper::header::UserAgent;
-use hyper::net::HttpsConnector;
-use hyper_native_tls::NativeTlsClient;
 use serde_json::Value;
 use std::io::Read;
 use std::sync::mpsc::Receiver;
@@ -25,6 +21,7 @@ use websocket::OwnedMessage;
 // Connection strings.
 const CONNECTION: &'static str = "wss://api.gemini.com/v1/marketdata/";
 const THIS_EXCHANGE: &'static str = "gemini";
+const SYMBOL_REQUEST: &'static str = "https://api.gemini.com/v1/symbols";
 
 pub fn start_gemini(
     rvx: &mut bus::Bus<ThreadMessages>,
@@ -63,7 +60,7 @@ pub fn spin_thread(
                 // Spin up some clients.
                 for pair in &products {
                     // let target = [CONNECTION, pair].join("");
-                    let target = format!("{}{}", CONNECTION, pair);
+                    let target = format!("{}{}", CONNECTION, pair.replace("-", ""));
                     tpack.message(format!("Connecting to {}...", &target));
 
                     // Wait for messages back.
@@ -176,50 +173,22 @@ pub fn iterate_clients(
     }
 }
 
-pub fn gemini_headers() -> Headers {
-    let mut headers = Headers::new();
-
-    headers.append_raw("X-GEMINI-APIKEY", b"fuck".to_vec());
-    headers.append_raw("X-GEMINI-PAYLOAD", b"fuck".to_vec());
-    headers.append_raw("X-GEMINI-SIGNATURE", b"fuck".to_vec());
-
-    return headers;
-}
-
 fn get_products() -> Vec<String> {
-    let ssl = NativeTlsClient::new().unwrap();
-    let connector = HttpsConnector::new(ssl);
-    let client = hyper::Client::with_connector(connector);
+    let body = reqwest::get(SYMBOL_REQUEST).unwrap().text().unwrap();
+    let body: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    let mut products = vec![];
 
-    let mut headers = Headers::new();
-    headers.set(UserAgent("hyper/0.5.2".to_owned()));
+    for item in body.iter() {
+        let id = match &item {
+            serde_json::Value::String(x) => x.to_owned(),
+            _ => {
+                info!("Error fetching products on {}, {:?}", THIS_EXCHANGE, &body);
+                String::new()
+            }
+        };
 
-    let mut resp = client
-        .get("https://api.gdax.com/products")
-        .headers(headers)
-        .send()
-        .unwrap();
-    let mut body = vec![];
-    resp.read_to_end(&mut body).unwrap();
-    let resp = String::from_utf8_lossy(&body);
-    let mut retval = vec![];
-
-    let json: Vec<Value> = match serde_json::from_str(&resp) {
-        Ok(x) => x,
-        Err(e) => {
-            println!("Product connection error: {:?}", e);
-            println!("{:?}", resp);
-            return retval;
-        }
-    };
-
-    for j in json {
-        match &j["id"] {
-            Value::String(x) => retval.push(x.clone()),
-            _ => (),
-        }
-        // println!("{:?}nn", j);
+        products.push(id);
     }
 
-    return retval;
+    return products;
 }
