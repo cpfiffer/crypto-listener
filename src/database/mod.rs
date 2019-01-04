@@ -8,9 +8,9 @@ const LOG_INJECT: &'static str = "INSERT INTO log VALUES (NOW(), $1)";
 const LOG_INJECT_ADDITIONAL: &'static str = "INSERT INTO log VALUES (NOW(), $1, $2)";
 const JSON_INJECT: &'static str = "INSERT INTO raw_json VALUES (NOW(), $1)";
 
-pub fn connect(exchange: &str, password: String) -> Connection {
+pub fn connect(exchange: &str) -> Connection {
     let conn = Connection::connect(
-        format!("postgres://rust:{}@localhost:5432/{}", password, exchange),
+        format!("postgres://rust:{}@localhost:5432/{}", "fuck", exchange),
         TlsMode::None,
     )
     .unwrap();

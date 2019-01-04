@@ -7,10 +7,11 @@ pub enum ThreadMessages {
   Terminate,
   Greetings,
   Message(String),
+  Restart(String),
 }
 
 pub struct ThreadPack {
-  tcv: Sender<ThreadMessages>,
+  pub tcv: Sender<ThreadMessages>,
   broadcast_rcv: bus::BusReader<ThreadMessages>,
   pub exchange: &'static str,
 }
@@ -51,11 +52,15 @@ impl ThreadPack {
     let _ = self.tcv.send(ThreadMessages::Greetings);
   }
 
+  pub fn notify_restart(&mut self, uri: String) {
+    let _ = self.tcv.send(ThreadMessages::Restart(uri));
+  }
+
   pub fn check_close(&mut self) -> bool {
     let m = self.broadcast_rcv.try_recv();
 
     match m {
-      Ok(ThreadMessages::Close) => {
+      Ok(ThreadMessages::Terminate) | Ok(ThreadMessages::Close) => {
         // The main thread told us to close, time to bail!
         // println!("check_close: {:?}", &m);
         return true;
@@ -67,5 +72,13 @@ impl ThreadPack {
       Err(_) => {}
     }
     return false;
+  }
+
+  pub fn clone(&self, bus: &mut bus::Bus<ThreadMessages>) -> ThreadPack {
+    return ThreadPack {
+      tcv: self.tcv.clone(),
+      broadcast_rcv: bus.add_rx(),
+      exchange: self.exchange.clone(),
+    };
   }
 }

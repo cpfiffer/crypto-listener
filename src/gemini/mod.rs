@@ -6,14 +6,12 @@ extern crate websocket;
 use crate::database;
 use crate::errors::CryptoError;
 use crate::threadpack::*;
+use crate::wspack::WSPack;
 
 use hyper;
-use serde_json::Value;
-use std::io::Read;
 use std::sync::mpsc::Receiver;
 use std::thread;
 use websocket::client::sync::Client;
-use websocket::client::ClientBuilder;
 use websocket::stream::sync::NetworkStream;
 use websocket::Message;
 use websocket::OwnedMessage;
@@ -26,76 +24,47 @@ const SYMBOL_REQUEST: &'static str = "https://api.gemini.com/v1/symbols";
 pub fn start_gemini(
     rvx: &mut bus::Bus<ThreadMessages>,
     live: bool,
-    password: String,
-) -> (Vec<thread::JoinHandle<()>>, Vec<Receiver<ThreadMessages>>) {
-    // let connection_targets:
-    let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
-    let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
+) -> (Vec<WSPack>, Vec<Receiver<ThreadMessages>>) {
+    // Allocate return vectors.
+    // let mut clients: Vec<WSPack> = Vec::new();
+    // let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
 
+    // Get products.
     let prods = get_products();
 
-    let (tpack, receiver) = ThreadPack::new(rvx.add_rx(), THIS_EXCHANGE);
-    threads.push(spin_thread(tpack, live, password, prods));
-    receivers.push(receiver);
+    // Generate clients.
+    let (clients, receivers) = spin_clients(live, prods, rvx);
 
-    return (threads, receivers);
+    return (clients, receivers);
 }
 
-pub fn spin_thread(
-    mut tpack: ThreadPack,
+pub fn spin_clients(
     live: bool,
-    password: String,
     products: Vec<String>,
-) -> thread::JoinHandle<()> {
+    rvx: &mut bus::Bus<ThreadMessages>,
+) -> (Vec<WSPack>, Vec<Receiver<ThreadMessages>>) {
+    // Allocate return vectors.
+    let mut clients: Vec<WSPack> = Vec::new();
+    let mut receivers: Vec<Receiver<ThreadMessages>> = Vec::new();
+
     // Run through all our clients.
-    return thread::spawn(move || {
-        if live {
-            loop {
-                // Allocate a client vector.
-                let mut clients: Vec<Client<Box<dyn NetworkStream + Send>>> = Vec::new();
+    if live {
+        // Spin up some clients.
+        for pair in &products {
+            // Get URI.
+            let target = format!("{}{}", CONNECTION, pair);
 
-                // Connect to the database.
-                let conn = database::connect(THIS_EXCHANGE, password.clone());
+            // Make a client.
+            let (new_client, rx) = WSPack::new(target, THIS_EXCHANGE, rvx.add_rx());
 
-                // Spin up some clients.
-                for pair in &products {
-                    // let target = [CONNECTION, pair].join("");
-                    let target = format!("{}{}", CONNECTION, pair.replace("-", ""));
-                    tpack.message(format!("Connecting to {}...", &target));
-
-                    // Wait for messages back.
-                    if live {
-                        let client = ClientBuilder::new(&target).unwrap().connect(None).unwrap();
-                        tpack.message(format!("Successfully connected to {}!", &target));
-                        clients.push(client);
-                    }
-                }
-                let (t, result) = iterate_clients(tpack, clients, conn);
-                tpack = t;
-
-                match result {
-                    Ok(_) => {}
-                    Err(CryptoError::Nothing) => {}
-                    Err(CryptoError::Restartable) => {
-                        tpack.message(format!(
-                            "{} received a restartable error, restarting...",
-                            THIS_EXCHANGE
-                        ));
-                    }
-                    Err(CryptoError::NonRestartable) => {
-                        tpack.message(format!(
-                            "{} received a nonrestartable error, closing...",
-                            THIS_EXCHANGE
-                        ));
-                        tpack.notify_abort();
-
-                        break;
-                    }
-                }
-            }
+            // Stash the new client and receiver.
+            clients.push(new_client);
+            receivers.push(rx);
         }
-        return ();
-    });
+    }
+
+    // Return.
+    return (clients, receivers);
 }
 
 pub fn iterate_clients(
