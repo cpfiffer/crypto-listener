@@ -14,6 +14,11 @@ use websocket::header::UserAgent;
 use websocket::stream::sync::NetworkStream;
 use websocket::Message;
 use websocket::OwnedMessage;
+use std::time::Duration;
+use std::time::SystemTime;
+
+// Constants
+const MESSAGE_TIMEOUT: Duration = Duration::from_secs(3600);
 
 // A WSPack holds a URI, a database connection, and contains
 // procedures to start and stop a websocket connection.
@@ -125,7 +130,7 @@ impl WSPack {
     // Iniate listening thread.
     let thread = thread::Builder::new().name(uri.clone()).spawn(move || {
       // Count times we have received the "NoData" error.
-      let mut data_counter = 0;
+      let mut last_message = SystemTime::now();
 
       // Wait for a couple seconds to ensure closure.
       thread::sleep(std::time::Duration::from_secs(3));
@@ -143,22 +148,18 @@ impl WSPack {
           Ok(OwnedMessage::Ping(_)) => {}
           Ok(OwnedMessage::Pong(_)) => {}
           Ok(OwnedMessage::Text(x)) => {
+            last_message = SystemTime::now();
             database::inject_json(&conn, x.to_string());
           }
           Err(websocket::WebSocketError::NoDataAvailable) => {
-            // Do nothing, I guess?
-            // tpack.message(format!(
-            //   "Error in {} receiving messages, no data available.",
-            //   &uri
-            // ));
-            // error_state = CryptoError::Restartable;
-            // tpack.notify_closed();
-            data_counter = data_counter + 1;
-
-            if data_counter >= 20 {
-              tpack.message(format!("URI: {} received  {} NoDataAvailable messages, restarting.", &uri, &data_counter));
-              error_state = CryptoError::Restartable;
-              tpack.notify_closed();
+            // Check time since last receipt.
+            let now = SystemTime::now();
+            if let Ok(duration) = now.duration_since(last_message) {
+              if duration >= MESSAGE_TIMEOUT {
+                error_state = CryptoError::Restartable;
+                tpack.message(format!("URI: {} has not received a message in {:?}. Restarting thread.", &uri, duration));
+                tpack.notify_closed();
+              }
             }
           }
           Err(x) => {
