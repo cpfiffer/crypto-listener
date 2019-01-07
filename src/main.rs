@@ -160,6 +160,7 @@ fn handle_clients(
                                     "Notification: Main thread found and restarted uri: {}",
                                     &uri
                                 );
+                                break;
                             }
                         }
                     }

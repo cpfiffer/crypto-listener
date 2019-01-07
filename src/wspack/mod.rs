@@ -159,6 +159,7 @@ impl WSPack {
                 error_state = CryptoError::Restartable;
                 tpack.message(format!("URI: {} has not received a message in {:?}. Restarting thread.", &uri, duration));
                 tpack.notify_closed();
+                break;
               }
             }
           }
