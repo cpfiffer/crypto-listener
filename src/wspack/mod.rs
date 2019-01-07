@@ -124,6 +124,9 @@ impl WSPack {
 
     // Iniate listening thread.
     let thread = thread::Builder::new().name(uri.clone()).spawn(move || {
+      // Count times we have received the "NoData" error.
+      let mut data_counter = 0;
+
       // Wait for a couple seconds to ensure closure.
       thread::sleep(std::time::Duration::from_secs(3));
 
@@ -150,6 +153,13 @@ impl WSPack {
             // ));
             // error_state = CryptoError::Restartable;
             // tpack.notify_closed();
+            data_counter = data_counter + 1;
+
+            if data_counter >= 20 {
+              tpack.message(format!("URI: {} received  {} NoDataAvailable messages, restarting.", &uri, &data_counter));
+              error_state = CryptoError::Restartable;
+              tpack.notify_closed();
+            }
           }
           Err(x) => {
             tpack.message(format!("Error in {} receiving messages: {:?}", &uri, x));
