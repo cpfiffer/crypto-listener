@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 // Constants
-const MESSAGE_TIMEOUT: Duration = Duration::from_secs(3600);
+const MESSAGE_TIMEOUT: Duration = Duration::from_secs(120);
 
 // A WSPack holds a URI, a database connection, and contains
 // procedures to start and stop a websocket connection.
