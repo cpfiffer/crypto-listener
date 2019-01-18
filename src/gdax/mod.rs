@@ -22,6 +22,10 @@ const CONNECTION: &'static str = "wss://ws-feed.gdax.com";
 const THIS_EXCHANGE: &'static str = "gdax";
 const SYMBOL_REQUEST: &'static str = "https://api.gdax.com/products";
 
+pub fn extra_handling(message: String) -> String {
+    return message;
+}
+
 pub fn start_gdax(
     rvx: bus::BusReader<ThreadMessages>,
     live: bool,
@@ -38,7 +42,7 @@ pub fn spin_thread(
 ) -> (Vec<wspack::WSPack>, Receiver<ThreadMessages>) {
     // Create receiver and client.
     let (mut gdaxclient, receiver) =
-        wspack::WSPack::new(CONNECTION.to_string(), THIS_EXCHANGE, rvx);
+        wspack::WSPack::new(CONNECTION.to_string(), THIS_EXCHANGE, rvx, extra_handling);
 
     // Setup client.
     if live {

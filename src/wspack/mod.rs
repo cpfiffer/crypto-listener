@@ -28,6 +28,7 @@ pub struct WSPack {
   tpack: threadpack::ThreadPack,
   headers: websocket::header::Headers,
   subscription_message: String,
+  pub handler: fn(String) -> String
 }
 
 impl WSPack {
@@ -51,6 +52,7 @@ impl WSPack {
     uri: String,
     exchange: &'static str,
     b_receiver: bus::BusReader<ThreadMessages>,
+    handle_func: fn(String) -> String
   ) -> (WSPack, Receiver<threadpack::ThreadMessages>) {
     let (tpack, receiver) = threadpack::ThreadPack::new(b_receiver, exchange);
 
@@ -60,6 +62,7 @@ impl WSPack {
       tpack: tpack,
       headers: WSPack::default_headers(),
       subscription_message: String::new(),
+      handler: handle_func
     };
 
     return (ws, receiver);

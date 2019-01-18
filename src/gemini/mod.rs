@@ -1,6 +1,4 @@
 extern crate postgres;
-extern crate serde;
-extern crate serde_json;
 extern crate websocket;
 
 use crate::database;
@@ -8,6 +6,10 @@ use crate::errors::CryptoError;
 use crate::threadpack::*;
 use crate::wspack::WSPack;
 
+use serde_json;
+use serde_json::Value;
+use serde_json::Map;
+use serde_json::json;
 use hyper;
 use std::sync::mpsc::Receiver;
 use std::thread;
@@ -20,6 +22,15 @@ use websocket::OwnedMessage;
 const CONNECTION: &'static str = "wss://api.gemini.com/v1/marketdata/";
 const THIS_EXCHANGE: &'static str = "gemini";
 const SYMBOL_REQUEST: &'static str = "https://api.gemini.com/v1/symbols";
+
+pub fn extra_handling(incoming: String,) -> String {
+let mut p:Map<String, Value> = serde_json::from_str(&incoming).unwrap();
+                p.entry("pair").or_insert(json!(pair));
+                let p = serde_json::to_value(p).unwrap();
+                let mess = serde_json::to_string_pretty(&p).unwrap();
+                println!("{}", &mess);
+                return mess;
+}
 
 pub fn start_gemini(
     rvx: &mut bus::Bus<ThreadMessages>,
@@ -52,10 +63,15 @@ pub fn spin_clients(
         // Spin up some clients.
         for pair in &products {
             // Get URI.
-            let target = format!("{}{}", CONNECTION, pair);
+            let target = format!("{}{}", CONNECTION, &pair);
+
+            // Create closure to add pairs to each json message.
+            let handle_func = |incoming:String| {
+                
+            };
 
             // Make a client.
-            let (new_client, rx) = WSPack::new(target, THIS_EXCHANGE, rvx.add_rx());
+            let (new_client, rx) = WSPack::new(target, THIS_EXCHANGE, rvx.add_rx(), handle_func);
 
             // Stash the new client and receiver.
             clients.push(new_client);
