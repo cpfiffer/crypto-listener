@@ -142,6 +142,7 @@ impl WSPack {
       let mut error_state = CryptoError::Nothing;
 
       for m in &mut client.incoming_messages() {
+        debug!("{:?}", &m);
         match m {
           Ok(OwnedMessage::Close(_)) => {
             error_state = CryptoError::Restartable;
