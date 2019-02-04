@@ -14,11 +14,11 @@ use websocket::header::UserAgent;
 use websocket::stream::sync::NetworkStream;
 use websocket::Message;
 use websocket::OwnedMessage;
-use std::time::Duration;
-use std::time::SystemTime;
+// use std::time::Duration;
+// use std::time::SystemTime;
 
 // Constants
-const MESSAGE_TIMEOUT: Duration = Duration::from_secs(360);
+// const MESSAGE_TIMEOUT: Duration = Duration::from_secs(360);
 
 // A WSPack holds a URI, a database connection, and contains
 // procedures to start and stop a websocket connection.
@@ -133,7 +133,7 @@ impl WSPack {
     // Iniate listening thread.
     let thread = thread::Builder::new().name(uri.clone()).spawn(move || {
       // Count times we have received the "NoData" error.
-      let mut last_message = SystemTime::now();
+      // let mut last_message = SystemTime::now();
 
       // Wait for a couple seconds to ensure closure.
       thread::sleep(std::time::Duration::from_secs(3));
@@ -142,40 +142,45 @@ impl WSPack {
       let mut error_state = CryptoError::Nothing;
 
       for m in &mut client.incoming_messages() {
-        match m {
-          Err(websocket::WebSocketError::NoDataAvailable) => {},
-          _ => debug!("{:?}", &m)
-        }
+        // match m {
+        //   Err(websocket::WebSocketError::NoDataAvailable) => {},
+        //   _ => debug!("{:?}", &m)
+        // }
         
         match m {
           Ok(OwnedMessage::Close(_)) => {
             error_state = CryptoError::Restartable;
             tpack.notify_closed();
           }
-          Ok(OwnedMessage::Binary(_)) => {}
-          Ok(OwnedMessage::Ping(_)) => {}
-          Ok(OwnedMessage::Pong(_)) => {}
+          Ok(OwnedMessage::Binary(x)) |
+          Ok(OwnedMessage::Ping(x)) |
+          Ok(OwnedMessage::Pong(x)) => {
+            tpack.message(format!("URI: {} received non-text message: {:?}", &uri, x));
+          }
           Ok(OwnedMessage::Text(x)) => {
-            last_message = SystemTime::now();
+            // last_message = SystemTime::now();
             database::inject_json(&conn, x.to_string());
           }
           Err(websocket::WebSocketError::NoDataAvailable) => {
-            // Check time since last receipt.
-            let now = SystemTime::now();
-            if let Ok(duration) = now.duration_since(last_message) {
-              if duration >= MESSAGE_TIMEOUT {
-                error_state = CryptoError::Restartable;
-                tpack.message(format!("URI: {} has not received a message in {:?}. Restarting thread.", &uri, duration));
+            // Just close the damn thread.
+            error_state = CryptoError::Restartable;
+                tpack.message(format!("URI: {} has not received has no data available. Closing thread.", &uri));
                 tpack.notify_closed();
-                break;
-              }
-            }
+
+            // Check time since last receipt.
+            // let now = SystemTime::now();
+            // if let Ok(duration) = now.duration_since(last_message) {
+            //   if duration >= MESSAGE_TIMEOUT {
+            //     error_state = CryptoError::Restartable;
+            //     tpack.message(format!("URI: {} has not received a message in {:?}. Restarting thread.", &uri, duration));
+            //     tpack.notify_closed();
+            //   }
+            // }
           }
           Err(x) => {
             tpack.message(format!("Error in {} receiving messages: {:?}", &uri, x));
             error_state = CryptoError::Restartable;
             tpack.notify_abort();
-            break;
           }
         }
 
@@ -184,7 +189,14 @@ impl WSPack {
           println!("{} received close message.", &uri);
           tpack.notify_abort();
           error_state = CryptoError::NonRestartable;
-          break;
+        }
+
+        // Check our error state.
+        match error_state {
+          CryptoError::Nothing => {},
+          CryptoError::Restartable |
+          CryptoError::NonRestartable |
+          CryptoError::UninitializedClient => break,
         }
       }
 
