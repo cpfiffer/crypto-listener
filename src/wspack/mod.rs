@@ -7,6 +7,7 @@ use bus;
 use postgres;
 use std::sync::mpsc::Receiver;
 use std::thread;
+use std::collections::HashMap;
 use websocket::client::sync::Client;
 use websocket::client::ClientBuilder;
 use websocket::header::Headers;
@@ -28,7 +29,7 @@ pub struct WSPack {
   tpack: threadpack::ThreadPack,
   headers: websocket::header::Headers,
   subscription_message: String,
-  pub handler: fn(String) -> String
+  pub pair: String
 }
 
 impl WSPack {
@@ -52,7 +53,7 @@ impl WSPack {
     uri: String,
     exchange: &'static str,
     b_receiver: bus::BusReader<ThreadMessages>,
-    handle_func: fn(String) -> String
+    pair: String
   ) -> (WSPack, Receiver<threadpack::ThreadMessages>) {
     let (tpack, receiver) = threadpack::ThreadPack::new(b_receiver, exchange);
 
@@ -62,7 +63,7 @@ impl WSPack {
       tpack: tpack,
       headers: WSPack::default_headers(),
       subscription_message: String::new(),
-      handler: handle_func
+      pair: pair
     };
 
     return (ws, receiver);
@@ -77,6 +78,7 @@ impl WSPack {
     Client<Box<dyn NetworkStream + Send>>,
     String,
     threadpack::ThreadPack,
+    HashMap<String, String>
   ) {
     // Connect to the database.
     let conn = database::connect(&self.exchange);
@@ -103,11 +105,18 @@ impl WSPack {
     // Send the subscription method if we've got one.
     let mess = self.subscription_message.clone();
 
+    // Create a hashmap of stuff to inject.
+    let mut injector = HashMap::new();
+
+    if self.pair.len() > 0 {
+      injector.insert("CRYPTOPAIR".to_string(), self.pair.clone());
+    }
+
     // if mess.len() > 0 {
     //   &self.send_json(&mess);
     // }
 
-    return (conn, client, mess, self.tpack.clone(bus));
+    return (conn, client, mess, self.tpack.clone(bus), injector);
   }
 
   // Message the main thread.
@@ -122,7 +131,7 @@ impl WSPack {
     bus: &mut bus::Bus<ThreadMessages>,
   ) -> Result<thread::JoinHandle<Result<(), CryptoError>>, std::io::Error> {
     // Retrieve the database connection, the WS client, and subscription message.
-    let (conn, mut client, sub_message, mut tpack) = self.connect(bus);
+    let (conn, mut client, sub_message, mut tpack, injector) = self.connect(bus);
     let uri = self.uri.clone();
 
     // Send the subscription message.
@@ -159,7 +168,7 @@ impl WSPack {
           }
           Ok(OwnedMessage::Text(x)) => {
             // last_message = SystemTime::now();
-            database::inject_json(&conn, x.to_string());
+            database::inject_json(&conn, x.to_string(), &injector);
           }
           Err(websocket::WebSocketError::NoDataAvailable) => {
             // Just close the damn thread.
@@ -177,11 +186,15 @@ impl WSPack {
             //   }
             // }
           }
+          Err(websocket::WebSocketError::IoError(e)) => {
+            tpack.message(format!("IOError {} : {:?}", &uri, e));
+            error_state = CryptoError::Restartable;
+          },
           Err(x) => {
-            tpack.message(format!("Error in {} receiving messages: {:?}", &uri, x));
+tpack.message(format!("Error in {} receiving messages: {:?}", &uri, x));
             error_state = CryptoError::Restartable;
             tpack.notify_abort();
-          }
+        }
         }
 
         // Check if we've been told to close.

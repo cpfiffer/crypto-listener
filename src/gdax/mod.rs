@@ -42,7 +42,7 @@ pub fn spin_thread(
 ) -> (Vec<wspack::WSPack>, Receiver<ThreadMessages>) {
     // Create receiver and client.
     let (mut gdaxclient, receiver) =
-        wspack::WSPack::new(CONNECTION.to_string(), THIS_EXCHANGE, rvx, extra_handling);
+        wspack::WSPack::new(CONNECTION.to_string(), THIS_EXCHANGE, rvx, "".to_string());
 
     // Setup client.
     if live {

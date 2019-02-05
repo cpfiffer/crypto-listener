@@ -3,6 +3,9 @@ extern crate serde_json;
 
 use self::postgres::{Connection, TlsMode};
 
+use std::collections::HashMap;
+use serde_json::map::Map;
+
 // Predefined static SQL queries.
 const LOG_INJECT: &'static str = "INSERT INTO log VALUES (NOW(), $1)";
 const LOG_INJECT_ADDITIONAL: &'static str = "INSERT INTO log VALUES (NOW(), $1, $2)";
@@ -41,9 +44,16 @@ pub fn connect(exchange: &str) -> Connection {
     return conn;
 }
 
-pub fn inject_json(conn: &Connection, message: String) {
-    let js: serde_json::Value = serde_json::from_str(&message).unwrap();
-    let r = conn.execute(JSON_INJECT, &[&js]);
+pub fn inject_json(conn: &Connection, message: String, extra: &HashMap<String, String>) {
+    let mut js: Map<String, serde_json::Value> = serde_json::from_str(&message).unwrap();
+    println!("{:?}", &js);
+    for (key, value) in &*extra {
+        js.insert(key.to_string(), serde_json::value::Value::String(value.to_string()));
+    }
+    println!("{:?}", &js);
+    let jsv: serde_json::Value = serde_json::to_value(js).unwrap();
+
+    let r = conn.execute(JSON_INJECT, &[&jsv]);
 
     match r {
         Ok(_) => {}

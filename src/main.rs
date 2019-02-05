@@ -25,7 +25,7 @@ use std::sync::Arc;
 pub mod database;
 pub mod errors;
 pub mod gdax;
-// pub mod gemini;
+pub mod gemini;
 // pub mod influx;
 pub mod threadpack;
 pub mod wspack;
@@ -57,9 +57,9 @@ fn main() {
     info!("Spinning clients...");
 
     // Start Gemini
-    // let (mut gemini_threads, mut gemini_receivers) = gemini::start_gemini(&mut bus, live.clone());
-    // clients.append(&mut gemini_threads);
-    // receivers.append(&mut gemini_receivers);
+    let (mut gemini_threads, mut gemini_receivers) = gemini::start_gemini(&mut bus, live.clone());
+    clients.append(&mut gemini_threads);
+    receivers.append(&mut gemini_receivers);
 
     // Start GDAX
     let (mut gdax_clients, mut gdax_receivers) = gdax::start_gdax(bus.add_rx(), live.clone());
