@@ -46,11 +46,9 @@ pub fn connect(exchange: &str) -> Connection {
 
 pub fn inject_json(conn: &Connection, message: String, extra: &HashMap<String, String>) {
     let mut js: Map<String, serde_json::Value> = serde_json::from_str(&message).unwrap();
-    println!("{:?}", &js);
     for (key, value) in &*extra {
         js.insert(key.to_string(), serde_json::value::Value::String(value.to_string()));
     }
-    println!("{:?}", &js);
     let jsv: serde_json::Value = serde_json::to_value(js).unwrap();
 
     let r = conn.execute(JSON_INJECT, &[&jsv]);
